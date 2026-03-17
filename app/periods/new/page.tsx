@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Calendar, AlertTriangle } from 'lucide-react';
-import { format, startOfWeek, addWeeks } from 'date-fns';
+import { ArrowLeft, Calendar, AlertTriangle, Info } from 'lucide-react';
+import { format } from 'date-fns';
+import { upcomingSecondMondays, getPeriodWeeks, getPeriodEndDate } from '@/lib/dates';
 
 interface Member {
   id: number;
@@ -23,12 +24,6 @@ interface Slot {
   sort_order: number;
 }
 
-interface CurrentAssignment {
-  slot_id: number;
-  member_id: number | null;
-  member_name: string | null;
-}
-
 export default function NewPeriodPage() {
   const router = useRouter();
   const [members, setMembers] = useState<Member[]>([]);
@@ -36,62 +31,65 @@ export default function NewPeriodPage() {
   const [currentAssignments, setCurrentAssignments] = useState<Map<number, number | null>>(new Map());
   const [name, setName] = useState('');
   const [startDate, setStartDate] = useState('');
-  const [weekCount, setWeekCount] = useState(4);
   const [assignments, setAssignments] = useState<Map<number, number | null>>(new Map());
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    // Default start = next Monday
-    const monday = startOfWeek(addWeeks(new Date(), 1), { weekStartsOn: 1 });
-    const d = format(monday, 'yyyy-MM-dd');
-    setStartDate(d);
-    setName(format(monday, 'MMMM yyyy'));
+  // The 2nd-Monday options for the next 6 months
+  const secondMondays = upcomingSecondMondays(6);
 
+  // Derived from startDate via the rule (no manual override needed)
+  const weekDates = startDate ? getPeriodWeeks(startDate) : [];
+  const endDate   = startDate ? getPeriodEndDate(startDate) : '';
+
+  useEffect(() => {
+    if (secondMondays.length > 0 && !startDate) {
+      const d = secondMondays[0];
+      setStartDate(d);
+      setName(format(new Date(d + 'T00:00:00'), 'MMMM yyyy'));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     Promise.all([fetch('/api/members').then(r => r.json()), fetch('/api/slots').then(r => r.json())])
       .then(([m, s]) => {
         setMembers((m as Member[]).filter(x => x.active && x.status !== 'retired' && x.name !== 'NOT ASSIGNED'));
         setSlots(s as Slot[]);
       });
 
-    // Load current period assignments as defaults
     fetch('/api/periods').then(r => r.json()).then(async (periods: { id: number; is_current: number }[]) => {
       const current = periods.find(p => p.is_current);
       if (current) {
         const res = await fetch(`/api/periods/${current.id}`);
         const d = await res.json();
         const map = new Map<number, number | null>();
-        for (const row of d.rows || []) {
-          map.set(row.slot_id, row.member_id);
-        }
+        for (const row of d.rows || []) map.set(row.slot_id, row.member_id);
         setCurrentAssignments(map);
-        setAssignments(new Map(map)); // default to same assignments
+        setAssignments(new Map(map));
       }
     });
   }, []);
 
-  const setMember = (slotId: number, memberId: number | null) => {
-    setAssignments(prev => new Map(prev).set(slotId, memberId));
+  const handleStartDateChange = (d: string) => {
+    setStartDate(d);
+    setName(format(new Date(d + 'T00:00:00'), 'MMMM yyyy'));
   };
+
+  const setMember = (slotId: number, memberId: number | null) =>
+    setAssignments(prev => new Map(prev).set(slotId, memberId));
 
   const handleCreate = async () => {
     if (!name || !startDate) return;
     setSaving(true);
-    const assignArr = Array.from(assignments.entries()).map(([slot_id, member_id]) => ({
-      slot_id, member_id,
-    }));
+    const assignArr = Array.from(assignments.entries()).map(([slot_id, member_id]) => ({ slot_id, member_id }));
     const res = await fetch('/api/periods', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, start_date: startDate, week_count: weekCount, assignments: assignArr }),
+      body: JSON.stringify({ name, start_date: startDate, week_count: weekDates.length, assignments: assignArr }),
     });
     const period = await res.json();
     router.push(`/periods/${period.id}`);
   };
-
-  const weekOptions = Array.from({ length: 10 }, (_, i) => {
-    const monday = startOfWeek(addWeeks(new Date(), i), { weekStartsOn: 1 });
-    return format(monday, 'yyyy-MM-dd');
-  });
 
   // Group slots by OIC
   const oicGroups: { oic: string; slots: Slot[] }[] = [];
@@ -116,14 +114,23 @@ export default function NewPeriodPage() {
         </div>
       </div>
 
+      {/* Rule callout */}
+      <div className="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800">
+        <Info size={16} className="mt-0.5 flex-shrink-0 text-blue-500" />
+        <div>
+          <span className="font-semibold">Periods run from the 2nd Monday of each month</span> through the
+          Monday before the next month&apos;s 2nd Monday. The number of weeks is calculated automatically.
+        </div>
+      </div>
+
       {/* Period details */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-4">
         <div className="flex items-center gap-2 mb-1">
           <Calendar className="text-red-500" size={16} />
           <h2 className="font-semibold text-gray-800">Period Details</h2>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="sm:col-span-1">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">Period Name *</label>
             <input
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
@@ -133,28 +140,38 @@ export default function NewPeriodPage() {
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Start Date (Monday) *</label>
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              Start Date <span className="text-gray-400 font-normal">(2nd Monday of month)</span>
+            </label>
             <select
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
               value={startDate}
-              onChange={e => setStartDate(e.target.value)}
+              onChange={e => handleStartDateChange(e.target.value)}
             >
-              {weekOptions.map(w => (
-                <option key={w} value={w}>{format(new Date(w + 'T00:00:00'), 'MMMM d, yyyy')}</option>
+              {secondMondays.map(d => (
+                <option key={d} value={d}>
+                  {format(new Date(d + 'T00:00:00'), 'MMMM d, yyyy')} — 2nd Monday
+                </option>
               ))}
             </select>
           </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Number of Weeks</label>
-            <select
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
-              value={weekCount}
-              onChange={e => setWeekCount(Number(e.target.value))}
-            >
-              {[4, 5, 6].map(n => <option key={n} value={n}>{n} weeks</option>)}
-            </select>
-          </div>
         </div>
+
+        {/* Auto-calculated range */}
+        {startDate && endDate && (
+          <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-700 flex items-center gap-4">
+            <span>
+              <span className="font-medium">Dates:</span>{' '}
+              {format(new Date(startDate + 'T00:00:00'), 'MMM d')} – {format(new Date(endDate + 'T00:00:00'), 'MMM d, yyyy')}
+            </span>
+            <span className="text-gray-400">·</span>
+            <span className="font-medium text-gray-900">{weekDates.length} weeks</span>
+            <span className="text-gray-400">·</span>
+            <span className="text-xs text-gray-500">
+              Mondays: {weekDates.map(d => format(new Date(d + 'T00:00:00'), 'M/d')).join(', ')}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Assignments */}

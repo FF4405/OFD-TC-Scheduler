@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { getPeriodWeeks } from '@/lib/dates';
 
 // Returns full period data including assignments + weekly completion grid
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -12,13 +13,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   if (!period) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  // Build list of Mondays in this period
-  const weeks: string[] = [];
-  for (let i = 0; i < period.week_count; i++) {
-    const d = new Date(period.start_date + 'T00:00:00');
-    d.setDate(d.getDate() + i * 7);
-    weeks.push(d.toISOString().split('T')[0]);
-  }
+  // Derive weeks from the 2nd-Monday rule (start → day before next month's 2nd Monday)
+  const weeks = getPeriodWeeks(period.start_date);
 
   // Assignments with member info and slot info
   const assignments = db.prepare(`

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { format, parseISO, isToday, isBefore } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import {
   CheckCircle2, Circle, AlertTriangle, Mail, ChevronDown, RefreshCw, Plus
 } from 'lucide-react';
@@ -167,6 +167,9 @@ export default function SchedulePage() {
         <h1 className="text-2xl font-bold text-gray-900">Oradell Fire Department</h1>
         <p className="text-lg font-semibold text-gray-700">House Committee Assignments</p>
         <p className="text-sm text-red-600 font-medium mt-1">Complete all checks by 7PM each Monday</p>
+        <p className="text-xs text-gray-400 mt-1">
+          Periods run from the <span className="font-medium text-gray-600">2nd Monday of each month</span> through the Monday before the next month&apos;s 2nd Monday
+        </p>
       </div>
 
       {/* Period selector + stats bar */}
@@ -195,6 +198,19 @@ export default function SchedulePage() {
             <Plus size={14} /> New Period
           </Link>
         </div>
+
+        {/* Period date range */}
+        {weeks.length > 0 && (
+          <div className="w-full text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 flex items-center gap-2">
+            <span className="font-medium text-gray-700">
+              {format(parseISO(weeks[0]), 'MMM d')} – {format(parseISO(weeks[weeks.length - 1]), 'MMM d, yyyy')}
+            </span>
+            <span className="text-gray-300">·</span>
+            <span>{weeks.length} weeks</span>
+            <span className="text-gray-300">·</span>
+            <span>2nd Monday of each month</span>
+          </div>
+        )}
 
         <div className="flex items-center gap-4 text-sm">
           {currentWeek && (

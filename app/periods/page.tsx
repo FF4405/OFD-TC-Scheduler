@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { format, parseISO, addWeeks } from 'date-fns';
-import { Plus, CheckCircle2, Calendar, ChevronRight } from 'lucide-react';
+import { format, parseISO } from 'date-fns';
+import { Plus, Calendar, ChevronRight } from 'lucide-react';
+import { getPeriodEndDate } from '@/lib/dates';
 
 interface Period {
   id: number;
@@ -53,7 +54,7 @@ export default function PeriodsPage() {
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm divide-y divide-gray-100 overflow-hidden">
           {periods.map(p => {
-            const endDate = addWeeks(parseISO(p.start_date), p.week_count - 1);
+            const endDate = getPeriodEndDate(p.start_date);
             const completionRate = p.slot_count > 0
               ? Math.round((p.total_completions / (p.slot_count * p.week_count)) * 100)
               : 0;
@@ -67,7 +68,7 @@ export default function PeriodsPage() {
                     )}
                   </div>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    {format(parseISO(p.start_date), 'MMM d')} – {format(endDate, 'MMM d, yyyy')} · {p.week_count} weeks · {p.slot_count} slots
+                    2nd Monday: {format(parseISO(p.start_date), 'MMM d')} – {format(parseISO(endDate), 'MMM d, yyyy')} · {p.week_count} weeks · {p.slot_count} slots
                   </p>
                   <div className="flex items-center gap-2 mt-1.5">
                     <div className="w-32 bg-gray-100 rounded-full h-1.5">

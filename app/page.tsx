@@ -1,291 +1,478 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import { format, parseISO, isToday, isBefore } from 'date-fns';
 import {
-  CheckCircle, XCircle, Clock, AlertTriangle, Truck,
-  TrendingUp, ChevronRight, Plus
+  CheckCircle2, Circle, AlertTriangle, Mail, ChevronDown, RefreshCw, Plus
 } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
 
-interface Schedule {
-  id: number;
+interface WeekCell {
+  weekDate: string;
+  label: string | null;
+  completion: { completed_at: string; completed_by: string | null; notes: string | null } | null;
+  isPast: boolean;
+  isCurrentWeek: boolean;
+}
+
+interface Row {
+  id: number;          // assignment id
+  slot_id: number;
+  member_id: number | null;
+  member_name: string | null;
+  member_email: string | null;
   apparatus_name: string;
-  unit_number: string;
-  apparatus_type: string;
-  status: string;
-  assigned_to: string | null;
-  total_checks: number;
-  passed_checks: number;
-  failed_checks: number;
-  pending_checks: number;
+  slot_type: string;
+  rotation_note: string | null;
+  oic_name: string | null;
+  sort_order: number;
+  weekData: WeekCell[];
 }
 
-interface Issue {
+interface Period {
   id: number;
-  apparatus_name: string;
-  unit_number: string;
-  title: string;
-  severity: string;
-  reported_at: string;
+  name: string;
+  start_date: string;
+  week_count: number;
+  is_current: number;
 }
 
-interface WeeklyStat {
-  week_start: string;
-  total: number;
-  completed: number;
-  with_issues: number;
+interface PeriodData {
+  period: Period;
+  weeks: string[];
+  rows: Row[];
 }
 
-interface DashboardData {
-  weekStart: string;
-  thisWeekSchedules: Schedule[];
-  openIssues: Issue[];
-  totalApparatus: number;
-  totalIssues: number;
-  weeklyCompletionStats: WeeklyStat[];
+interface AllPeriods {
+  id: number;
+  name: string;
+  start_date: string;
+  is_current: number;
 }
 
-const statusConfig = {
-  completed: { label: 'Completed', color: 'bg-green-100 text-green-800', icon: CheckCircle, iconColor: 'text-green-500' },
-  issues: { label: 'Issues Found', color: 'bg-red-100 text-red-800', icon: XCircle, iconColor: 'text-red-500' },
-  in_progress: { label: 'In Progress', color: 'bg-blue-100 text-blue-800', icon: Clock, iconColor: 'text-blue-500' },
-  pending: { label: 'Pending', color: 'bg-gray-100 text-gray-700', icon: Clock, iconColor: 'text-gray-400' },
-};
-
-const severityConfig = {
-  critical: 'bg-red-600 text-white',
-  high: 'bg-orange-500 text-white',
-  medium: 'bg-yellow-400 text-yellow-900',
-  low: 'bg-gray-200 text-gray-700',
-};
-
-export default function Dashboard() {
-  const [data, setData] = useState<DashboardData | null>(null);
+export default function SchedulePage() {
+  const [data, setData] = useState<PeriodData | null>(null);
+  const [allPeriods, setAllPeriods] = useState<AllPeriods[]>([]);
+  const [selectedPeriodId, setSelectedPeriodId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [completingCell, setCompletingCell] = useState<string | null>(null);
+  const [notifyModal, setNotifyModal] = useState<{ week: string; assignmentId?: number } | null>(null);
+  const [notifyRecipients, setNotifyRecipients] = useState<NotifyRecipient[] | null>(null);
+  const [notifyLoading, setNotifyLoading] = useState(false);
 
-  useEffect(() => {
-    fetch('/api/dashboard')
-      .then(r => r.json())
-      .then(d => { setData(d); setLoading(false); });
+  const fetchPeriods = async () => {
+    const res = await fetch('/api/periods');
+    const periods = await res.json() as AllPeriods[];
+    setAllPeriods(periods);
+    if (!selectedPeriodId && periods.length > 0) {
+      const current = periods.find(p => p.is_current) || periods[0];
+      setSelectedPeriodId(current.id);
+    }
+  };
+
+  const fetchData = useCallback(async (periodId: number) => {
+    setLoading(true);
+    const res = await fetch(`/api/periods/${periodId}`);
+    const d = await res.json() as PeriodData;
+    setData(d);
+    setLoading(false);
   }, []);
 
-  if (loading) {
+  useEffect(() => { fetchPeriods(); }, []);
+  useEffect(() => {
+    if (selectedPeriodId) fetchData(selectedPeriodId);
+  }, [selectedPeriodId, fetchData]);
+
+  const toggleComplete = async (row: Row, cell: WeekCell) => {
+    const key = `${row.id}:${cell.weekDate}`;
+    setCompletingCell(key);
+    await fetch('/api/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        assignment_id: row.id,
+        week_date: cell.weekDate,
+        undo: !!cell.completion,
+      }),
+    });
+    setCompletingCell(null);
+    if (selectedPeriodId) fetchData(selectedPeriodId);
+  };
+
+  const openNotify = async (week: string, assignmentId?: number) => {
+    if (!data) return;
+    setNotifyModal({ week, assignmentId });
+    setNotifyLoading(true);
+    setNotifyRecipients(null);
+    const res = await fetch('/api/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        period_id: data.period.id,
+        week_date: week,
+        target: assignmentId ?? 'pending',
+      }),
+    });
+    const d = await res.json();
+    setNotifyRecipients(d.recipients);
+    setNotifyLoading(false);
+  };
+
+  if (!data && loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-red-600"></div>
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-red-600" />
       </div>
     );
   }
 
-  if (!data) return null;
-
-  const weekLabel = format(parseISO(data.weekStart), 'MMMM d, yyyy');
-  const totalScheduled = data.thisWeekSchedules.length;
-  const totalCompleted = data.thisWeekSchedules.filter(s => s.status === 'completed' || s.status === 'issues').length;
-  const totalPending = data.thisWeekSchedules.filter(s => s.status === 'pending').length;
-
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-500 text-sm mt-1">Week of {weekLabel}</p>
-        </div>
-        <Link
-          href="/schedules/new"
-          className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-        >
-          <Plus size={16} />
-          New Schedule
+  if (!data) {
+    return (
+      <div className="text-center py-20">
+        <p className="text-gray-500 mb-4">No periods have been created yet.</p>
+        <Link href="/periods/new" className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
+          <Plus size={16} /> Create First Period
         </Link>
       </div>
+    );
+  }
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard
-          label="Active Apparatus"
-          value={data.totalApparatus}
-          icon={<Truck className="text-blue-500" size={22} />}
-          bg="bg-blue-50"
-        />
-        <StatCard
-          label="Scheduled This Week"
-          value={totalScheduled}
-          icon={<Clock className="text-purple-500" size={22} />}
-          bg="bg-purple-50"
-        />
-        <StatCard
-          label="Checks Completed"
-          value={`${totalCompleted}/${totalScheduled}`}
-          icon={<CheckCircle className="text-green-500" size={22} />}
-          bg="bg-green-50"
-        />
-        <StatCard
-          label="Open Issues"
-          value={data.totalIssues}
-          icon={<AlertTriangle className="text-red-500" size={22} />}
-          bg="bg-red-50"
-          alert={data.totalIssues > 0}
-        />
+  const { period, weeks, rows } = data;
+  const today = new Date().toISOString().split('T')[0];
+
+  // Group rows by OIC for rendering (same OIC spans multiple rows)
+  const oicGroups: { oic: string; rows: Row[] }[] = [];
+  for (const row of rows) {
+    const oic = row.oic_name || '';
+    const last = oicGroups[oicGroups.length - 1];
+    if (last && last.oic === oic) last.rows.push(row);
+    else oicGroups.push({ oic, rows: [row] });
+  }
+
+  // Stats
+  const currentWeekIdx = weeks.findIndex(w => {
+    const next = weeks[weeks.indexOf(w) + 1];
+    return w <= today && (!next || next > today);
+  });
+  const currentWeek = currentWeekIdx >= 0 ? weeks[currentWeekIdx] : null;
+  const completedThisWeek = currentWeek
+    ? rows.filter(r => r.weekData[currentWeekIdx]?.completion).length
+    : 0;
+  const pendingThisWeek = rows.length - completedThisWeek;
+
+  return (
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="text-center">
+        <h1 className="text-2xl font-bold text-gray-900">Oradell Fire Department</h1>
+        <p className="text-lg font-semibold text-gray-700">House Committee Assignments</p>
+        <p className="text-sm text-red-600 font-medium mt-1">Complete all checks by 7PM each Monday</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* This Week's Checks */}
-        <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-            <h2 className="font-semibold text-gray-900">This Week&apos;s Checks</h2>
-            <Link href="/schedules" className="text-sm text-red-600 hover:text-red-700 flex items-center gap-1">
-              View all <ChevronRight size={14} />
-            </Link>
+      {/* Period selector + stats bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <select
+              className="appearance-none pl-3 pr-8 py-2 border border-gray-300 rounded-lg text-sm font-medium bg-white focus:outline-none focus:ring-2 focus:ring-red-500 cursor-pointer"
+              value={selectedPeriodId ?? ''}
+              onChange={e => setSelectedPeriodId(Number(e.target.value))}
+            >
+              {allPeriods.map(p => (
+                <option key={p.id} value={p.id}>
+                  {p.name}{p.is_current ? ' (Current)' : ''}
+                </option>
+              ))}
+            </select>
+            <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>
-          {data.thisWeekSchedules.length === 0 ? (
-            <div className="px-6 py-12 text-center text-gray-500">
-              <svg className="mx-auto text-gray-300 mb-3" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <rect x="3" y="4" width="18" height="18" rx="2" />
-                <path d="M8 2v4M16 2v4M3 10h18" />
-              </svg>
-              <p className="font-medium">No checks scheduled this week</p>
-              <Link href="/schedules/new" className="mt-2 inline-block text-sm text-red-600 hover:underline">
-                Create a schedule
-              </Link>
-            </div>
-          ) : (
-            <div className="divide-y divide-gray-50">
-              {data.thisWeekSchedules.map(s => {
-                const cfg = statusConfig[s.status as keyof typeof statusConfig] || statusConfig.pending;
-                const StatusIcon = cfg.icon;
-                const pct = s.total_checks > 0 ? Math.round(((s.passed_checks + s.failed_checks) / s.total_checks) * 100) : 0;
-                return (
-                  <div key={s.id} className="flex items-center px-6 py-4 hover:bg-gray-50 transition-colors">
-                    <StatusIcon className={`mr-3 flex-shrink-0 ${cfg.iconColor}`} size={20} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-gray-900">{s.apparatus_name}</span>
-                        <span className="text-xs text-gray-400">({s.unit_number})</span>
-                      </div>
-                      <div className="flex items-center gap-3 mt-1">
-                        <div className="flex-1 bg-gray-100 rounded-full h-1.5 max-w-32">
-                          <div
-                            className={`h-1.5 rounded-full ${s.failed_checks > 0 ? 'bg-red-500' : 'bg-green-500'}`}
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                        <span className="text-xs text-gray-500">
-                          {s.passed_checks + s.failed_checks}/{s.total_checks} checked
-                          {s.failed_checks > 0 && <span className="text-red-500 ml-1">({s.failed_checks} failed)</span>}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="ml-4 flex items-center gap-3">
-                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${cfg.color}`}>
-                        {cfg.label}
-                      </span>
-                      <Link
-                        href={`/checks/${s.id}`}
-                        className="text-xs text-red-600 hover:text-red-700 font-medium"
-                      >
-                        {s.status === 'pending' ? 'Start' : 'View'} →
-                      </Link>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          <button onClick={() => selectedPeriodId && fetchData(selectedPeriodId)}
+            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+            <RefreshCw size={15} />
+          </button>
+          <Link href="/periods/new"
+            className="flex items-center gap-1.5 text-sm text-red-600 hover:text-red-700 font-medium">
+            <Plus size={14} /> New Period
+          </Link>
         </div>
 
-        {/* Open Issues */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-            <h2 className="font-semibold text-gray-900">Open Issues</h2>
-            <Link href="/history?tab=issues" className="text-sm text-red-600 hover:text-red-700 flex items-center gap-1">
-              View all <ChevronRight size={14} />
-            </Link>
+        <div className="flex items-center gap-4 text-sm">
+          {currentWeek && (
+            <>
+              <span className="flex items-center gap-1.5 text-green-700 font-medium">
+                <CheckCircle2 size={16} className="text-green-500" />
+                {completedThisWeek}/{rows.length} done this week
+              </span>
+              {pendingThisWeek > 0 && (
+                <button
+                  onClick={() => openNotify(currentWeek)}
+                  className="flex items-center gap-1.5 text-sm bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1.5 rounded-lg hover:bg-amber-100 transition-colors font-medium"
+                >
+                  <Mail size={14} />
+                  Remind {pendingThisWeek} pending
+                </button>
+              )}
+            </>
+          )}
+          <Link href={`/periods/${period.id}`}
+            className="text-sm text-gray-500 hover:text-gray-700 underline">
+            Manage assignments
+          </Link>
+        </div>
+      </div>
+
+      {/* Main grid */}
+      <div className="overflow-x-auto rounded-xl border border-gray-200 shadow-sm bg-white">
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="bg-yellow-400 border-b-2 border-yellow-500">
+              <th className="px-4 py-3 text-left font-bold text-gray-900 w-28">OIC</th>
+              <th className="px-4 py-3 text-left font-bold text-gray-900">Assignment</th>
+              <th className="px-4 py-3 text-left font-bold text-gray-900 w-32">
+                This Period
+              </th>
+              {weeks.map(w => {
+                const isCurrentWk = w <= today && (weeks[weeks.indexOf(w) + 1]
+                  ? weeks[weeks.indexOf(w) + 1] > today : true);
+                return (
+                  <th key={w} className={`px-3 py-3 text-center font-bold text-gray-900 w-24 ${
+                    isCurrentWk ? 'bg-yellow-300' : ''
+                  }`}>
+                    <div>{format(parseISO(w), 'M/d/yyyy')}</div>
+                    {isCurrentWk && (
+                      <div className="text-xs font-normal text-yellow-800 mt-0.5">← This Week</div>
+                    )}
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {oicGroups.map(({ oic, rows: groupRows }, gi) => (
+              groupRows.map((row, ri) => {
+                const isFirstInGroup = ri === 0;
+                const isLastInGroup = ri === groupRows.length - 1;
+                const isLastGroup = gi === oicGroups.length - 1;
+                const rowBg = gi % 2 === 0 ? 'bg-white' : 'bg-gray-50';
+
+                return (
+                  <tr key={row.id} className={`${rowBg} border-b border-gray-100 last:border-0 hover:brightness-95 transition-all`}>
+                    {/* OIC cell — spans rows within group */}
+                    {isFirstInGroup && (
+                      <td
+                        rowSpan={groupRows.length}
+                        className={`px-4 py-3 font-semibold text-gray-800 text-center align-middle border-r border-gray-200 ${
+                          !isLastGroup ? 'border-b border-gray-200' : ''
+                        } ${rowBg}`}
+                      >
+                        {oic}
+                      </td>
+                    )}
+
+                    {/* Assignment slot */}
+                    <td className={`px-4 py-3 border-r border-gray-100 ${!isLastInGroup ? '' : 'border-b border-gray-200'}`}>
+                      <div className="font-semibold text-gray-900">{row.apparatus_name}</div>
+                      <div className="text-xs text-gray-500 font-medium">{row.slot_type}</div>
+                      {row.rotation_note && (
+                        <div className="text-xs text-gray-400 italic mt-0.5">{row.rotation_note}</div>
+                      )}
+                    </td>
+
+                    {/* Current assignee */}
+                    <td className="px-4 py-3 border-r border-gray-100">
+                      {row.member_name ? (
+                        <div>
+                          <div className="font-medium text-gray-900">{row.member_name}</div>
+                          {row.member_email && (
+                            <a href={`mailto:${row.member_email}`}
+                              className="text-xs text-blue-500 hover:underline truncate block max-w-28">
+                              {row.member_email.split('@')[0]}
+                            </a>
+                          )}
+                        </div>
+                      ) : (
+                        <Link href={`/periods/${period.id}`}
+                          className="text-xs text-red-500 font-medium hover:underline flex items-center gap-1">
+                          <AlertTriangle size={12} /> Unassigned
+                        </Link>
+                      )}
+                    </td>
+
+                    {/* Week cells */}
+                    {row.weekData.map((cell, wi) => {
+                      const key = `${row.id}:${cell.weekDate}`;
+                      const isSpinning = completingCell === key;
+                      const isFuture = !cell.isPast && !cell.isCurrentWeek;
+                      const isOverdue = cell.isPast && !cell.completion;
+
+                      return (
+                        <td key={wi} className={`px-2 py-2 text-center border-l border-gray-100 ${
+                          cell.isCurrentWeek ? 'bg-yellow-50' : ''
+                        }`}>
+                          <button
+                            onClick={() => !isFuture && toggleComplete(row, cell)}
+                            disabled={isSpinning || isFuture}
+                            title={
+                              cell.completion
+                                ? `Completed by ${cell.completion.completed_by || 'unknown'} — click to undo`
+                                : isFuture ? 'Future week'
+                                : isOverdue ? 'Overdue — click to mark complete'
+                                : 'Click to mark complete'
+                            }
+                            className={`w-full flex flex-col items-center justify-center gap-0.5 rounded-lg py-2 px-1 transition-all ${
+                              isSpinning ? 'opacity-50 cursor-wait' :
+                              isFuture ? 'cursor-default opacity-30' :
+                              cell.completion
+                                ? 'bg-green-100 hover:bg-green-200 cursor-pointer'
+                                : isOverdue
+                                  ? 'bg-red-50 hover:bg-red-100 cursor-pointer'
+                                  : 'hover:bg-gray-100 cursor-pointer'
+                            }`}
+                          >
+                            {isSpinning ? (
+                              <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-400 border-t-transparent" />
+                            ) : cell.completion ? (
+                              <CheckCircle2 size={18} className="text-green-600" />
+                            ) : isOverdue ? (
+                              <AlertTriangle size={16} className="text-red-400" />
+                            ) : (
+                              <Circle size={16} className="text-gray-300" />
+                            )}
+                            {cell.label && (
+                              <span className={`text-xs font-medium leading-tight ${
+                                cell.completion ? 'text-green-700' :
+                                isOverdue ? 'text-red-500' : 'text-gray-500'
+                              }`}>
+                                {cell.label}
+                              </span>
+                            )}
+                            {cell.completion?.completed_by && (
+                              <span className="text-xs text-green-600 leading-tight truncate max-w-full px-1">
+                                {cell.completion.completed_by.split(' ').pop()}
+                              </span>
+                            )}
+                          </button>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Footer warning */}
+      <div className="bg-amber-400 text-gray-900 font-bold text-center py-3 rounded-xl text-sm tracking-wide">
+        ** REPEAT OFFENDERS ARE SUBJECT TO SUSPENSION — JUST DO IT! **
+      </div>
+
+      {/* Notify Modal */}
+      {notifyModal && (
+        <NotifyModal
+          week={notifyModal.week}
+          recipients={notifyRecipients}
+          loading={notifyLoading}
+          onClose={() => { setNotifyModal(null); setNotifyRecipients(null); }}
+        />
+      )}
+    </div>
+  );
+}
+
+interface NotifyRecipient {
+  assignmentId: number;
+  name: string;
+  email: string;
+  slot: string;
+  subject: string;
+  body: string;
+}
+
+function NotifyModal({ week, recipients, loading, onClose }: {
+  week: string;
+  recipients: NotifyRecipient[] | null;
+  loading: boolean;
+  onClose: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const emailList = recipients?.filter(r => r.email).map(r => r.email).join(', ') || '';
+
+  const copyEmails = () => {
+    navigator.clipboard.writeText(emailList);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h2 className="font-semibold text-gray-900">Send Reminders</h2>
+            <p className="text-xs text-gray-500 mt-0.5">Week of {format(parseISO(week), 'MMMM d, yyyy')}</p>
           </div>
-          {data.openIssues.length === 0 ? (
-            <div className="px-6 py-12 text-center text-gray-500">
-              <CheckCircle className="mx-auto text-green-400" size={32} />
-              <p className="mt-2 text-sm font-medium">No open issues!</p>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-lg font-bold">×</button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          {loading ? (
+            <div className="flex items-center justify-center h-24">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600" />
+            </div>
+          ) : !recipients || recipients.length === 0 ? (
+            <div className="text-center py-8">
+              <CheckCircle2 className="mx-auto text-green-500 mb-2" size={32} />
+              <p className="font-medium text-gray-700">All checks complete for this week!</p>
             </div>
           ) : (
-            <div className="divide-y divide-gray-50">
-              {data.openIssues.map(issue => (
-                <div key={issue.id} className="px-6 py-3">
-                  <div className="flex items-start gap-2">
-                    <span className={`mt-0.5 text-xs px-1.5 py-0.5 rounded font-medium flex-shrink-0 ${severityConfig[issue.severity as keyof typeof severityConfig] || severityConfig.low}`}>
-                      {issue.severity}
-                    </span>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{issue.title}</p>
-                      <p className="text-xs text-gray-500">{issue.unit_number} · {format(parseISO(issue.reported_at), 'MMM d')}</p>
+            <div className="space-y-3">
+              <p className="text-sm text-gray-600">{recipients.length} member{recipients.length > 1 ? 's' : ''} pending:</p>
+              {recipients.map(r => (
+                <div key={r.assignmentId} className="border border-gray-200 rounded-lg p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-medium text-gray-900">{r.name}</p>
+                      <p className="text-xs text-gray-500">{r.slot}</p>
+                      {r.email && (
+                        <a href={`mailto:${r.email}?subject=${encodeURIComponent(r.subject)}&body=${encodeURIComponent(r.body)}`}
+                          className="text-xs text-blue-500 hover:underline">{r.email}</a>
+                      )}
                     </div>
+                    {r.email && (
+                      <a
+                        href={`mailto:${r.email}?subject=${encodeURIComponent(r.subject)}&body=${encodeURIComponent(r.body)}`}
+                        className="flex-shrink-0 flex items-center gap-1 text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1.5 rounded-lg hover:bg-blue-100 transition-colors"
+                      >
+                        <Mail size={12} /> Email
+                      </a>
+                    )}
                   </div>
                 </div>
               ))}
             </div>
           )}
         </div>
+
+        {recipients && recipients.length > 0 && emailList && (
+          <div className="px-6 py-4 border-t border-gray-100 flex items-center gap-3">
+            <button
+              onClick={copyEmails}
+              className="flex items-center gap-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg transition-colors"
+            >
+              {copied ? '✓ Copied!' : 'Copy all emails'}
+            </button>
+            <a
+              href={`mailto:?bcc=${encodeURIComponent(emailList)}&subject=${encodeURIComponent(`Reminder: OFD Check Due by 7PM Monday ${week}`)}`}
+              className="flex items-center gap-2 text-sm bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg transition-colors"
+            >
+              <Mail size={14} /> Open in mail app (BCC all)
+            </a>
+          </div>
+        )}
       </div>
-
-      {/* Weekly Completion Trend */}
-      {data.weeklyCompletionStats.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <TrendingUp className="text-gray-500" size={18} />
-            <h2 className="font-semibold text-gray-900">Weekly Completion History</h2>
-          </div>
-          <div className="flex items-end gap-3 h-24">
-            {[...data.weeklyCompletionStats].reverse().map(stat => {
-              const pct = stat.total > 0 ? (stat.completed / stat.total) * 100 : 0;
-              return (
-                <div key={stat.week_start} className="flex-1 flex flex-col items-center gap-1">
-                  <div className="w-full flex flex-col justify-end" style={{ height: '72px' }}>
-                    <div
-                      className={`w-full rounded-t ${stat.with_issues > 0 ? 'bg-orange-400' : 'bg-green-500'}`}
-                      style={{ height: `${Math.max(pct * 0.72, pct > 0 ? 4 : 0)}px` }}
-                    />
-                  </div>
-                  <span className="text-xs text-gray-400 whitespace-nowrap">
-                    {format(parseISO(stat.week_start), 'M/d')}
-                  </span>
-                  <span className="text-xs font-medium text-gray-600">{stat.completed}/{stat.total}</span>
-                </div>
-              );
-            })}
-          </div>
-          <div className="flex gap-4 mt-3 text-xs text-gray-500">
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-500 inline-block"></span> Completed clean</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-400 inline-block"></span> Completed with issues</span>
-          </div>
-        </div>
-      )}
-
-      {totalPending > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-3">
-          <AlertTriangle className="text-amber-500 flex-shrink-0" size={20} />
-          <p className="text-sm text-amber-800">
-            <span className="font-semibold">{totalPending} apparatus</span> still need checks this week.{' '}
-            <Link href="/checks" className="underline font-medium">Start a check now.</Link>
-          </p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function StatCard({ label, value, icon, bg, alert }: {
-  label: string; value: string | number; icon: React.ReactNode; bg: string; alert?: boolean;
-}) {
-  return (
-    <div className={`${bg} rounded-xl p-4 border ${alert ? 'border-red-200' : 'border-transparent'}`}>
-      <div className="flex items-center justify-between mb-2">
-        {icon}
-        {alert && <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />}
-      </div>
-      <div className="text-2xl font-bold text-gray-900">{value}</div>
-      <div className="text-xs text-gray-500 mt-1">{label}</div>
     </div>
   );
 }

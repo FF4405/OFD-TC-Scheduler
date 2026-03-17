@@ -23,215 +23,163 @@ export function getDb(): Database.Database {
 
 function initializeSchema(db: Database.Database) {
   db.exec(`
-    CREATE TABLE IF NOT EXISTS apparatus (
+    -- Firefighter roster
+    CREATE TABLE IF NOT EXISTS members (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      line_number TEXT,
       name TEXT NOT NULL,
-      type TEXT NOT NULL,
-      unit_number TEXT NOT NULL UNIQUE,
-      year INTEGER,
-      make TEXT,
-      model TEXT,
+      email TEXT,
       status TEXT NOT NULL DEFAULT 'active',
+      -- status: active | officer | retired | inactive | 50yr
+      remarks TEXT,
+      active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
-    CREATE TABLE IF NOT EXISTS check_items (
+    -- Fixed weekly check assignment slots (Tower 21 A&E, Tower 21 SCBA, etc.)
+    CREATE TABLE IF NOT EXISTS assignment_slots (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      apparatus_id INTEGER NOT NULL REFERENCES apparatus(id) ON DELETE CASCADE,
-      category TEXT NOT NULL,
-      name TEXT NOT NULL,
-      description TEXT,
+      apparatus_name TEXT NOT NULL,
+      slot_type TEXT NOT NULL,
+      rotation_note TEXT,
+      -- JSON array of alternating labels, e.g. '["Officer","Driver"]'
+      -- NULL means no rotation sub-label
+      rotation_labels TEXT,
+      oic_name TEXT,
       sort_order INTEGER NOT NULL DEFAULT 0
     );
 
-    CREATE TABLE IF NOT EXISTS weekly_schedules (
+    -- Monthly-ish periods (each column in the old tracking sheet)
+    CREATE TABLE IF NOT EXISTS periods (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      week_start TEXT NOT NULL,
-      apparatus_id INTEGER NOT NULL REFERENCES apparatus(id) ON DELETE CASCADE,
-      assigned_to TEXT,
-      status TEXT NOT NULL DEFAULT 'pending',
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      UNIQUE(week_start, apparatus_id)
+      name TEXT NOT NULL,
+      start_date TEXT NOT NULL,  -- First Monday (YYYY-MM-DD)
+      week_count INTEGER NOT NULL DEFAULT 4,
+      is_current INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
-    CREATE TABLE IF NOT EXISTS check_records (
+    -- Who is assigned to each slot for a given period
+    CREATE TABLE IF NOT EXISTS period_assignments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      schedule_id INTEGER NOT NULL REFERENCES weekly_schedules(id) ON DELETE CASCADE,
-      check_item_id INTEGER NOT NULL REFERENCES check_items(id) ON DELETE CASCADE,
-      result TEXT NOT NULL DEFAULT 'pending',
+      period_id INTEGER NOT NULL REFERENCES periods(id) ON DELETE CASCADE,
+      slot_id INTEGER NOT NULL REFERENCES assignment_slots(id) ON DELETE CASCADE,
+      member_id INTEGER REFERENCES members(id) ON DELETE SET NULL,
+      UNIQUE(period_id, slot_id)
+    );
+
+    -- Per-week completion records (only inserted when marked complete)
+    CREATE TABLE IF NOT EXISTS weekly_completions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      assignment_id INTEGER NOT NULL REFERENCES period_assignments(id) ON DELETE CASCADE,
+      week_date TEXT NOT NULL,  -- The Monday (YYYY-MM-DD)
+      completed_at TEXT NOT NULL DEFAULT (datetime('now')),
+      completed_by TEXT,
       notes TEXT,
-      checked_at TEXT,
-      checked_by TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS issues (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      apparatus_id INTEGER NOT NULL REFERENCES apparatus(id) ON DELETE CASCADE,
-      schedule_id INTEGER,
-      check_item_id INTEGER,
-      title TEXT NOT NULL,
-      description TEXT,
-      severity TEXT NOT NULL DEFAULT 'low',
-      status TEXT NOT NULL DEFAULT 'open',
-      reported_by TEXT,
-      reported_at TEXT NOT NULL DEFAULT (datetime('now')),
-      resolved_at TEXT,
-      resolved_by TEXT
+      UNIQUE(assignment_id, week_date)
     );
   `);
 
-  // Seed data if apparatus table is empty
-  const count = (db.prepare('SELECT COUNT(*) as c FROM apparatus').get() as { c: number }).c;
-  if (count === 0) {
-    seedData(db);
-  }
+  const count = (db.prepare('SELECT COUNT(*) as c FROM members').get() as { c: number }).c;
+  if (count === 0) seedData(db);
 }
 
 function seedData(db: Database.Database) {
-  const insertApparatus = db.prepare(`
-    INSERT INTO apparatus (name, type, unit_number, year, make, model, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+  // ── Members from the Oradell FD tracking sheet ──────────────────────────
+  const insertMember = db.prepare(`
+    INSERT INTO members (line_number, name, email, status, remarks, active)
+    VALUES (?, ?, ?, ?, ?, ?)
   `);
 
-  const insertItem = db.prepare(`
-    INSERT INTO check_items (apparatus_id, category, name, description, sort_order)
-    VALUES (?, ?, ?, ?, ?)
+  const members: [string, string, string, string, string, number][] = [
+    ['33', 'J. Bonaglia',       'jbonaglia@oradellfire.org',     'active',  '',    1],
+    ['34', 'S. Kufel',          'skufel@oradellfire.org',         '50yr',    '',    1],
+    ['35', 'B. Tsagaratos',     'btsagarato@oradellfire.org',     'active',  '',    1],
+    ['36', 'C. Harris',         'charris@oradellfire.org',        'active',  '',    1],
+    ['37', 'N. Roux',           'nroux@oradellfire.org',          'active',  '',    1],
+    ['38', 'S. Verducci',       'sverducci@oradellfire.org',      'active',  '',    1],
+    ['40', 'RETIRED',           '',                               'retired', '',    0],
+    ['41', 'C. May',            '',                               '50yr',    '',    1],
+    ['42', 'W. Fricke',         'wfricke@oradellfire.org',        'active',  '',    1],
+    ['43', 'J. Koth III',       'jkoth@oradellfire.org',          'active',  'P&A', 1],
+    ['44', 'M. Zempol',         'mzempol@oradellfire.org',        'active',  '',    1],
+    ['45', 'F. Gangemi',        'fgangemi@oradellfire.org',       'active',  'P&A', 1],
+    ['46', 'S. Gencarelli',     'sgencarelli@oradellfire.org',    'active',  '',    1],
+    ['48', 'R. Kwon',           'rkwon@oradellfire.org',          'active',  '',    1],
+    ['49', 'D. Kahill',         'dkahill@oradellfire.org',        'active',  'P&A', 1],
+    ['50', 'Lt. K. Burns',      'kburns@oradellfire.org',         'officer', '',    1],
+    ['51', 'H. Pobutkiewicz',   'hpobutkiewicz@oradellfire.org',  'active',  '',    1],
+    ['52', 'T. Kellerman',      'tkellerman@oradellfire.org',     'active',  '',    1],
+    ['54', 'J. Kufel',          'jkufel@oradellfire.org',         'active',  '',    1],
+    ['55', 'R. Larkin',         'rlarkin@oradellfire.org',        'active',  '',    1],
+    ['56', 'A. Gianfrancesco',  'agianfrancesco@oradellfire.org', 'active',  '',    1],
+    ['57', 'J. Pellechio',      'jpellechio@oradellfire.org',     'active',  '',    1],
+    ['58', 'L. Bosetti',        'lbosetti@oradellfire.org',       'active',  '',    1],
+    ['59', 'V. Parmar',         'vparmar@oradellfire.org',        'active',  '',    1],
+    ['60', 'E. Mata',           'emata@oradellfire.org',          'active',  '',    1],
+    ['61', 'D. Gonzalez',       'dgonzalez@oradellfire.org',      'active',  '',    1],
+    ['',   'E. Pak',            'epak@oradellfire.org',           'active',  '',    1],
+    ['',   'T. Murray',         'tmurray@oradellfire.org',        'active',  '',    1],
+    ['',   'N. Pinto-Shaw',     'npintoshaw@oradellfire.org',     'active',  '',    1],
+    ['',   'A. Burns',          'aburns@oradellfire.org',         'active',  '',    1],
+    // Members currently assigned (may not appear in visible roster rows)
+    ['',   'B. Bonte',          'bbonte@oradellfire.org',         'active',  '',    1],
+    ['',   'J. DeStefano',      'jdestefano@oradellfire.org',     'active',  '',    1],
+    ['',   'D. Schneider',      'dschneider@oradellfire.org',     'active',  '',    1],
+    ['',   'J. Kaplan',         'jkaplan@oradellfire.org',        'active',  '',    1],
+    ['62', 'NOT ASSIGNED',      'no-reply@oradellfire.org',       'inactive','',    0],
+  ];
+  for (const m of members) insertMember.run(...m);
+
+  // ── Assignment slots ─────────────────────────────────────────────────────
+  const insertSlot = db.prepare(`
+    INSERT INTO assignment_slots
+      (apparatus_name, slot_type, rotation_note, rotation_labels, oic_name, sort_order)
+    VALUES (?, ?, ?, ?, ?, ?)
   `);
 
-  const apparatus = [
-    { name: 'Engine 1', type: 'Engine', unit: 'E-1', year: 2019, make: 'Pierce', model: 'Enforcer' },
-    { name: 'Engine 2', type: 'Engine', unit: 'E-2', year: 2015, make: 'Ferrara', model: 'Ignitor' },
-    { name: 'Ladder 1', type: 'Ladder', unit: 'L-1', year: 2020, make: 'Pierce', model: 'Velocity' },
-    { name: 'Rescue 1', type: 'Rescue', unit: 'R-1', year: 2018, make: 'Spartan', model: 'Metro Star' },
-    { name: 'Tanker 1', type: 'Tanker', unit: 'T-1', year: 2016, make: 'Freightliner', model: 'Custom' },
-    { name: 'Command 1', type: 'Command', unit: 'C-1', year: 2022, make: 'Ford', model: 'F-450' },
-  ];
+  // rotation_labels: JSON string or null
+  insertSlot.run('Pumps & Aerial',          'Pumps & Aerial',        'Different Engine or Ladder Each Week',  null,                            'A/C Moretti',          1);
+  insertSlot.run('Tower 21',                'Apparatus & Equipment', 'Alternate Sides Each Week',             '["Officer","Driver"]',           'Lt. Jaimes',           2);
+  insertSlot.run('Tower 21',                'SCBA',                  null,                                    null,                            'Lt. Jaimes',           3);
+  insertSlot.run('Squad 22',                'Apparatus & Equipment', 'Alternate Sides Each Week',             '["Driver","Officer"]',           'Capt. Bernard',        4);
+  insertSlot.run('Squad 22',                'SCBA',                  null,                                    null,                            'Capt. Bernard',        5);
+  insertSlot.run('Engine 23 & Engine 24',   'Apparatus & Equipment', 'Alternate Engine Each Week',            '["Engine 23","Engine 24"]',      'Lt. Haak / Lt. Burns', 6);
+  insertSlot.run('Engine 23',               'SCBA',                  null,                                    null,                            'Lt. Haak / Lt. Burns', 7);
+  insertSlot.run('Engine 24',               'SCBA',                  null,                                    null,                            'Lt. Haak / Lt. Burns', 8);
 
-  const engineItems = [
-    ['Cab & Controls', 'Fuel Level', 'Check fuel level, minimum 3/4 tank', 1],
-    ['Cab & Controls', 'Oil Level', 'Check engine oil level', 2],
-    ['Cab & Controls', 'Coolant Level', 'Check coolant level', 3],
-    ['Cab & Controls', 'Warning Lights', 'Test all warning lights and signals', 4],
-    ['Cab & Controls', 'Air Brakes', 'Test air brake system', 5],
-    ['Cab & Controls', 'Wipers & Mirrors', 'Check wipers, mirrors, and glass', 6],
-    ['Pump & Water', 'Pump Operation', 'Test pump panel operation', 7],
-    ['Pump & Water', 'Water Tank Level', 'Verify water tank is full (500+ gal)', 8],
-    ['Pump & Water', 'Foam System', 'Check foam supply and system', 9],
-    ['Pump & Water', 'Discharge Caps', 'Inspect all discharge caps and valves', 10],
-    ['Hose & Equipment', '1.75" Attack Hose', 'Verify hose load and couplings', 11],
-    ['Hose & Equipment', '2.5" Supply Hose', 'Verify supply hose load', 12],
-    ['Hose & Equipment', 'Nozzles', 'Inspect all nozzles and applicators', 13],
-    ['Hose & Equipment', 'Ground Ladders', 'Inspect ground ladders', 14],
-    ['SCBA', 'SCBA Units', 'Check all SCBA cylinders (full pressure)', 15],
-    ['SCBA', 'SCBA Masks', 'Inspect masks and seals', 16],
-    ['SCBA', 'Spare Cylinders', 'Verify spare cylinder count and pressure', 17],
-    ['Medical', 'AED', 'Check AED battery and pads', 18],
-    ['Medical', 'First Aid Kit', 'Inspect first aid kit supplies', 19],
-    ['Medical', 'Oxygen', 'Check O2 cylinder levels', 20],
-    ['Tools', 'Hand Tools', 'Inspect hand tools (axe, Halligan, etc.)', 21],
-    ['Tools', 'Power Tools', 'Check power tools and fuel', 22],
-    ['Tools', 'Salvage Equipment', 'Inspect salvage covers and equipment', 23],
-    ['Exterior', 'Tires', 'Check all tire condition and pressure', 24],
-    ['Exterior', 'Body & Compartments', 'Inspect body damage and compartment doors', 25],
-    ['Exterior', 'Lights', 'Test all exterior lights and scene lights', 26],
-  ];
+  // ── Current period: starts 2026-03-16 ───────────────────────────────────
+  const periodResult = db.prepare(`
+    INSERT INTO periods (name, start_date, week_count, is_current)
+    VALUES ('March–April 2026', '2026-03-16', 5, 1)
+  `).run();
+  const periodId = periodResult.lastInsertRowid;
 
-  const ladderItems = [
-    ['Cab & Controls', 'Fuel Level', 'Check fuel level, minimum 3/4 tank', 1],
-    ['Cab & Controls', 'Oil Level', 'Check engine oil level', 2],
-    ['Cab & Controls', 'Coolant Level', 'Check coolant level', 3],
-    ['Cab & Controls', 'Warning Lights', 'Test all warning lights', 4],
-    ['Cab & Controls', 'Air Brakes', 'Test air brake system', 5],
-    ['Aerial Device', 'Aerial Ladder', 'Inspect aerial ladder rungs and structure', 6],
-    ['Aerial Device', 'Aerial Controls', 'Test aerial controls at turntable', 7],
-    ['Aerial Device', 'Outriggers', 'Test outrigger deployment', 8],
-    ['Aerial Device', 'Hydraulic System', 'Check hydraulic fluid levels and lines', 9],
-    ['Aerial Device', 'Aerial Lights', 'Test aerial tip and waterway lights', 10],
-    ['Ground Ladders', '35ft Extension', 'Inspect 35ft extension ladder', 11],
-    ['Ground Ladders', '24ft Extension', 'Inspect 24ft extension ladder', 12],
-    ['Ground Ladders', 'Roof Ladder', 'Inspect roof ladder', 13],
-    ['Ground Ladders', 'Attic Ladder', 'Inspect attic ladder', 14],
-    ['SCBA', 'SCBA Units', 'Check all SCBA cylinders (full pressure)', 15],
-    ['SCBA', 'SCBA Masks', 'Inspect masks and seals', 16],
-    ['Tools', 'Ventilation Fans', 'Check PPV fans and blades', 17],
-    ['Tools', 'Saws', 'Check chainsaws and rotary saws fuel/condition', 18],
-    ['Tools', 'Hand Tools', 'Inspect forcible entry tools', 19],
-    ['Medical', 'AED', 'Check AED battery and pads', 20],
-    ['Exterior', 'Tires', 'Check all tire condition and pressure', 21],
-    ['Exterior', 'Body & Compartments', 'Inspect body and compartment doors', 22],
-    ['Exterior', 'Lights', 'Test all exterior and scene lights', 23],
-  ];
-
-  const rescueItems = [
-    ['Cab & Controls', 'Fuel Level', 'Check fuel level, minimum 3/4 tank', 1],
-    ['Cab & Controls', 'Oil Level', 'Check engine oil level', 2],
-    ['Cab & Controls', 'Warning Lights', 'Test all warning lights', 3],
-    ['Extrication', 'Hydraulic Tools', 'Check spreaders, cutters, rams', 4],
-    ['Extrication', 'Hydraulic Fluid', 'Check hydraulic power unit fluid', 5],
-    ['Extrication', 'Struts & Cribbing', 'Inspect vehicle stabilization equipment', 6],
-    ['Extrication', 'Hand Tools', 'Inspect rescue hand tools', 7],
-    ['Medical', 'Stretcher', 'Inspect stretcher and straps', 8],
-    ['Medical', 'AED', 'Check AED battery and pads', 9],
-    ['Medical', 'Oxygen', 'Check O2 cylinders and equipment', 10],
-    ['Medical', 'Trauma Kits', 'Inspect trauma kits and supplies', 11],
-    ['SCBA', 'SCBA Units', 'Check all SCBA cylinders', 12],
-    ['Rope Rescue', 'Rope', 'Inspect all rescue rope', 13],
-    ['Rope Rescue', 'Rigging Hardware', 'Inspect pulleys, carabiners, anchors', 14],
-    ['Rope Rescue', 'Harnesses', 'Inspect all harnesses', 15],
-    ['Confined Space', 'Gas Monitor', 'Test gas monitor and sensors', 16],
-    ['Confined Space', 'Air Supply', 'Check confined space air supply', 17],
-    ['Lighting', 'Generator', 'Start and test generator', 18],
-    ['Lighting', 'Scene Lights', 'Test all scene lighting', 19],
-    ['Exterior', 'Tires', 'Check all tire condition and pressure', 20],
-    ['Exterior', 'Body & Compartments', 'Inspect body and compartment doors', 21],
-  ];
-
-  const tankerItems = [
-    ['Cab & Controls', 'Fuel Level', 'Check fuel level, minimum 3/4 tank', 1],
-    ['Cab & Controls', 'Oil Level', 'Check engine oil level', 2],
-    ['Cab & Controls', 'Warning Lights', 'Test all warning lights', 3],
-    ['Cab & Controls', 'Air Brakes', 'Test air brake system', 4],
-    ['Tank & Pump', 'Water Tank Level', 'Verify water tank is full (2500+ gal)', 5],
-    ['Tank & Pump', 'Pump Operation', 'Test pump operation', 6],
-    ['Tank & Pump', 'Fill Site Equipment', 'Inspect fill site connections', 7],
-    ['Tank & Pump', 'Dump Valves', 'Test all dump valves', 8],
-    ['Hose', 'Supply Hose', 'Inspect supply hose', 9],
-    ['Hose', 'Hard Suction', 'Inspect hard suction hose', 10],
-    ['Exterior', 'Tires', 'Check all tire condition and pressure', 11],
-    ['Exterior', 'Body & Compartments', 'Inspect body and compartment doors', 12],
-    ['Exterior', 'Lights', 'Test all exterior lights', 13],
-  ];
-
-  const commandItems = [
-    ['Vehicle', 'Fuel Level', 'Check fuel level', 1],
-    ['Vehicle', 'Oil Level', 'Check engine oil', 2],
-    ['Vehicle', 'Warning Lights', 'Test emergency lights and siren', 3],
-    ['Communications', 'Portable Radios', 'Check all portable radios and batteries', 4],
-    ['Communications', 'Mobile Radio', 'Test mobile radio', 5],
-    ['Communications', 'Laptop/Tablet', 'Check MDT/laptop charge and operation', 6],
-    ['Equipment', 'Command Vest', 'Inspect command vest', 7],
-    ['Equipment', 'Pre-Plans', 'Verify pre-plans are current', 8],
-    ['Medical', 'First Aid Kit', 'Inspect first aid supplies', 9],
-    ['Exterior', 'Tires', 'Check tire condition', 10],
-    ['Exterior', 'Lights', 'Test all exterior lights', 11],
-  ];
-
-  const itemSets: Record<string, typeof engineItems> = {
-    'Engine': engineItems,
-    'Ladder': ladderItems,
-    'Rescue': rescueItems,
-    'Tanker': tankerItems,
-    'Command': commandItems,
+  // Member name → id lookup
+  const memberByName = (name: string): number | null => {
+    const row = db.prepare('SELECT id FROM members WHERE name = ?').get(name) as { id: number } | undefined;
+    return row ? row.id : null;
   };
 
-  for (const app of apparatus) {
-    const result = insertApparatus.run(
-      app.name, app.type, app.unit, app.year, app.make, app.model, 'active'
-    );
-    const apparatusId = result.lastInsertRowid;
-    const items = itemSets[app.type] || engineItems;
-    for (const [category, name, description, sortOrder] of items) {
-      insertItem.run(apparatusId, category, name, description, sortOrder);
-    }
+  // Assignments for current period (from the screenshot "This Month" column)
+  const assignmentData: [number, string][] = [
+    [1, 'J. Koth III'],
+    [2, 'B. Bonte'],
+    [3, 'N. Roux'],
+    [4, 'J. DeStefano'],
+    [5, 'M. Zempol'],
+    [6, 'D. Schneider'],
+    [7, 'J. Kaplan'],
+    [8, 'R. Kwon'],
+  ];
+
+  const insertAssignment = db.prepare(`
+    INSERT INTO period_assignments (period_id, slot_id, member_id) VALUES (?, ?, ?)
+  `);
+
+  for (const [slotOrder, memberName] of assignmentData) {
+    const slot = db.prepare('SELECT id FROM assignment_slots WHERE sort_order = ?').get(slotOrder) as { id: number };
+    const memberId = memberByName(memberName);
+    if (slot) insertAssignment.run(periodId, slot.id, memberId);
   }
 }

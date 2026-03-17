@@ -2,14 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Flame, LayoutDashboard, Truck, CalendarCheck, ClipboardList, AlertTriangle } from 'lucide-react';
+import { Flame, LayoutGrid, Users, ClipboardList, Calendar } from 'lucide-react';
 
 const navItems = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/apparatus', label: 'Apparatus', icon: Truck },
-  { href: '/schedules', label: 'Schedules', icon: CalendarCheck },
-  { href: '/checks', label: 'Run Check', icon: ClipboardList },
-  { href: '/history', label: 'History', icon: AlertTriangle },
+  { href: '/',        label: 'Schedule',  icon: LayoutGrid   },
+  { href: '/members', label: 'Members',   icon: Users        },
+  { href: '/slots',   label: 'Slots',     icon: ClipboardList },
+  { href: '/periods', label: 'Periods',   icon: Calendar     },
 ];
 
 export default function NavBar() {
@@ -18,10 +17,13 @@ export default function NavBar() {
   return (
     <nav className="bg-gray-900 text-white shadow-lg">
       <div className="max-w-7xl mx-auto px-4">
-        <div className="flex items-center h-16">
-          <div className="flex items-center gap-2 mr-8">
-            <Flame className="text-red-500" size={28} />
-            <span className="font-bold text-lg tracking-wide">OFD Equipment Tracker</span>
+        <div className="flex items-center h-16 gap-6">
+          <div className="flex items-center gap-2 mr-4">
+            <Flame className="text-red-500" size={26} />
+            <div className="leading-tight">
+              <div className="font-bold text-sm tracking-wide">Oradell FD</div>
+              <div className="text-xs text-gray-400 leading-none">Check Tracker</div>
+            </div>
           </div>
           <div className="flex gap-1">
             {navItems.map(({ href, label, icon: Icon }) => {
@@ -36,11 +38,14 @@ export default function NavBar() {
                       : 'text-gray-300 hover:bg-gray-700 hover:text-white'
                   }`}
                 >
-                  <Icon size={16} />
+                  <Icon size={15} />
                   {label}
                 </Link>
               );
             })}
+          </div>
+          <div className="ml-auto text-xs text-gray-500">
+            Due by 7PM every Monday
           </div>
         </div>
       </div>

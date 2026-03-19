@@ -1,36 +1,63 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# OFD Equipment Scheduler
 
-## Getting Started
+A Next.js web app for managing apparatus and equipment check assignments for the Oradell Fire Department.
 
-First, run the development server:
+## Quick Install (Ubuntu)
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone <repo-url>
+cd OFD
+chmod +x install.sh
+./install.sh
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+`install.sh` will:
+1. Install Node.js if not present (via NodeSource or nvm)
+2. Fix directory permissions
+3. Create the `data/` folder for the SQLite database
+4. Run `npm install`
+5. Build the app with `npm run build`
+6. Optionally install as a **systemd service** so it starts on boot
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Running the App
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+# Production (after install)
+./start.sh
 
-## Learn More
+# Development (hot-reload)
+./start.sh dev
 
-To learn more about Next.js, take a look at the following resources:
+# Custom port
+PORT=8080 ./start.sh
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Manual Steps (if you prefer)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+# Fix permissions first if npm install fails with EACCES
+sudo chown -R $(whoami):$(whoami) .
 
-## Deploy on Vercel
+npm install
+npm run build
+npm start          # production on http://localhost:3000
+npm run dev        # development with hot-reload
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Systemd Service (run on boot)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+If you chose the systemd option during install, manage it with:
+
+```bash
+sudo systemctl status ofd-scheduler
+sudo systemctl stop ofd-scheduler
+sudo systemctl start ofd-scheduler
+sudo journalctl -u ofd-scheduler -f   # live logs
+```
+
+## Tech Stack
+
+- **Next.js 16** – React framework with App Router
+- **SQLite** (better-sqlite3) – local database stored at `data/ofd.db`
+- **Tailwind CSS 4** – styling
+- **TypeScript** – type safety

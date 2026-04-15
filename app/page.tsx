@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { format, parseISO } from 'date-fns';
 import {
-  CheckCircle2, Circle, AlertTriangle, Mail, ChevronDown, RefreshCw, Plus
+  CheckCircle2, Circle, AlertTriangle, Mail, ChevronDown, RefreshCw, Plus, Zap
 } from 'lucide-react';
 
 interface WeekCell {
@@ -50,6 +50,17 @@ interface AllPeriods {
   is_current: number;
 }
 
+interface FirstDueStatus {
+  configured: boolean;
+  slotsConfigured?: number;
+  latest?: {
+    synced_at: string;
+    completions_found: number;
+    completions_new: number;
+    errors: string[] | null;
+  } | null;
+}
+
 export default function SchedulePage() {
   const [data, setData] = useState<PeriodData | null>(null);
   const [allPeriods, setAllPeriods] = useState<AllPeriods[]>([]);
@@ -59,6 +70,7 @@ export default function SchedulePage() {
   const [notifyModal, setNotifyModal] = useState<{ week: string; assignmentId?: number } | null>(null);
   const [notifyRecipients, setNotifyRecipients] = useState<NotifyRecipient[] | null>(null);
   const [notifyLoading, setNotifyLoading] = useState(false);
+  const [firstDueStatus, setFirstDueStatus] = useState<FirstDueStatus | null>(null);
 
   const fetchPeriods = async () => {
     const res = await fetch('/api/periods');
@@ -78,7 +90,10 @@ export default function SchedulePage() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { fetchPeriods(); }, []);
+  useEffect(() => {
+    fetchPeriods();
+    fetch('/api/firstdue/status').then(r => r.json()).then(setFirstDueStatus).catch(() => null);
+  }, []);
   useEffect(() => {
     if (selectedPeriodId) fetchData(selectedPeriodId);
   }, [selectedPeriodId, fetchData]);
@@ -201,7 +216,7 @@ export default function SchedulePage() {
 
         {/* Period date range */}
         {weeks.length > 0 && (
-          <div className="w-full text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 flex items-center gap-2">
+          <div className="w-full text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 flex items-center gap-2 flex-wrap">
             <span className="font-medium text-gray-700">
               {format(parseISO(weeks[0]), 'MMM d')} – {format(parseISO(weeks[weeks.length - 1]), 'MMM d, yyyy')}
             </span>
@@ -209,6 +224,17 @@ export default function SchedulePage() {
             <span>{weeks.length} weeks</span>
             <span className="text-gray-300">·</span>
             <span>2nd Monday of each month</span>
+            {firstDueStatus?.configured && (
+              <>
+                <span className="text-gray-300">·</span>
+                <span className="flex items-center gap-1 text-blue-600">
+                  <Zap size={11} />
+                  {firstDueStatus.latest
+                    ? <>FirstDue synced {format(parseISO(firstDueStatus.latest.synced_at), 'M/d h:mm a')} · {firstDueStatus.latest.completions_new} new</>
+                    : 'FirstDue connected (no sync yet)'}
+                </span>
+              </>
+            )}
           </div>
         )}
 
@@ -385,12 +411,15 @@ export default function SchedulePage() {
       </div>
 
       {/* Notify Modal */}
-      {notifyModal && (
+      {notifyModal && data && (
         <NotifyModal
           week={notifyModal.week}
+          periodId={data.period.id}
+          assignmentId={notifyModal.assignmentId}
           recipients={notifyRecipients}
           loading={notifyLoading}
           onClose={() => { setNotifyModal(null); setNotifyRecipients(null); }}
+          onSent={() => selectedPeriodId && fetchData(selectedPeriodId)}
         />
       )}
     </div>
@@ -406,20 +435,35 @@ interface NotifyRecipient {
   body: string;
 }
 
-function NotifyModal({ week, recipients, loading, onClose }: {
+function NotifyModal({ week, periodId, assignmentId, recipients, loading, onClose, onSent }: {
   week: string;
+  periodId: number;
+  assignmentId?: number;
   recipients: NotifyRecipient[] | null;
   loading: boolean;
   onClose: () => void;
+  onSent: () => void;
 }) {
-  const [copied, setCopied] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sendResult, setSendResult] = useState<{ sent: number; failed: number } | null>(null);
 
-  const emailList = recipients?.filter(r => r.email).map(r => r.email).join(', ') || '';
-
-  const copyEmails = () => {
-    navigator.clipboard.writeText(emailList);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const sendEmails = async () => {
+    setSending(true);
+    setSendResult(null);
+    const res = await fetch('/api/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        period_id: periodId,
+        week_date: week,
+        target: assignmentId ?? 'pending',
+        dry_run: false,
+      }),
+    });
+    const d = await res.json();
+    setSendResult({ sent: d.sent ?? 0, failed: d.failed ?? 0 });
+    setSending(false);
+    onSent();
   };
 
   return (
@@ -438,6 +482,17 @@ function NotifyModal({ week, recipients, loading, onClose }: {
             <div className="flex items-center justify-center h-24">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600" />
             </div>
+          ) : sendResult ? (
+            <div className="text-center py-8 space-y-2">
+              <CheckCircle2 className="mx-auto text-green-500 mb-2" size={32} />
+              <p className="font-semibold text-gray-800">Reminders sent!</p>
+              <p className="text-sm text-gray-500">
+                <span className="text-green-700 font-medium">{sendResult.sent} sent</span>
+                {sendResult.failed > 0 && (
+                  <span className="text-red-600 font-medium"> · {sendResult.failed} failed</span>
+                )}
+              </p>
+            </div>
           ) : !recipients || recipients.length === 0 ? (
             <div className="text-center py-8">
               <CheckCircle2 className="mx-auto text-green-500 mb-2" size={32} />
@@ -452,19 +507,13 @@ function NotifyModal({ week, recipients, loading, onClose }: {
                     <div>
                       <p className="font-medium text-gray-900">{r.name}</p>
                       <p className="text-xs text-gray-500">{r.slot}</p>
-                      {r.email && (
-                        <a href={`mailto:${r.email}?subject=${encodeURIComponent(r.subject)}&body=${encodeURIComponent(r.body)}`}
-                          className="text-xs text-blue-500 hover:underline">{r.email}</a>
-                      )}
+                      {r.email
+                        ? <span className="text-xs text-blue-500">{r.email}</span>
+                        : <span className="text-xs text-red-400">No email on file</span>}
                     </div>
-                    {r.email && (
-                      <a
-                        href={`mailto:${r.email}?subject=${encodeURIComponent(r.subject)}&body=${encodeURIComponent(r.body)}`}
-                        className="flex-shrink-0 flex items-center gap-1 text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1.5 rounded-lg hover:bg-blue-100 transition-colors"
-                      >
-                        <Mail size={12} /> Email
-                      </a>
-                    )}
+                    {r.email
+                      ? <Mail size={14} className="text-gray-300 flex-shrink-0 mt-1" />
+                      : <AlertTriangle size={14} className="text-amber-400 flex-shrink-0 mt-1" />}
                   </div>
                 </div>
               ))}
@@ -472,20 +521,18 @@ function NotifyModal({ week, recipients, loading, onClose }: {
           )}
         </div>
 
-        {recipients && recipients.length > 0 && emailList && (
+        {recipients && recipients.length > 0 && !sendResult && (
           <div className="px-6 py-4 border-t border-gray-100 flex items-center gap-3">
             <button
-              onClick={copyEmails}
-              className="flex items-center gap-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg transition-colors"
+              onClick={sendEmails}
+              disabled={sending}
+              className="flex items-center gap-2 text-sm bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg transition-colors font-medium"
             >
-              {copied ? '✓ Copied!' : 'Copy all emails'}
+              {sending
+                ? <><div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent" /> Sending…</>
+                : <><Mail size={14} /> Send {recipients.filter(r => r.email).length} Email{recipients.filter(r => r.email).length !== 1 ? 's' : ''}</>}
             </button>
-            <a
-              href={`mailto:?bcc=${encodeURIComponent(emailList)}&subject=${encodeURIComponent(`Reminder: OFD Check Due by 7PM Monday ${week}`)}`}
-              className="flex items-center gap-2 text-sm bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg transition-colors"
-            >
-              <Mail size={14} /> Open in mail app (BCC all)
-            </a>
+            <span className="text-xs text-gray-400">via Mailgun · logged automatically</span>
           </div>
         )}
       </div>

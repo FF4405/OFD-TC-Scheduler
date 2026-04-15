@@ -11,6 +11,7 @@ interface Slot {
   rotation_labels: string | null;  // JSON string
   oic_name: string | null;
   sort_order: number;
+  firstdue_checklist_id: string | null;
 }
 
 const EMPTY = {
@@ -19,6 +20,7 @@ const EMPTY = {
   rotation_note: '',
   rotation_labels: '',
   oic_name: '',
+  firstdue_checklist_id: '',
 };
 
 export default function SlotsPage() {
@@ -43,6 +45,7 @@ export default function SlotsPage() {
       rotation_note: s.rotation_note ?? '',
       rotation_labels: labels.join(', '),
       oic_name: s.oic_name ?? '',
+      firstdue_checklist_id: s.firstdue_checklist_id ?? '',
     });
     setEditing(s);
     setShowForm(true);
@@ -59,6 +62,7 @@ export default function SlotsPage() {
       rotation_note: form.rotation_note || null,
       rotation_labels: labelsArr,
       oic_name: form.oic_name || null,
+      firstdue_checklist_id: form.firstdue_checklist_id || null,
     };
     const url = editing ? `/api/slots/${editing.id}` : '/api/slots';
     const method = editing ? 'PATCH' : 'POST';
@@ -109,7 +113,14 @@ export default function SlotsPage() {
                 </div>
                 <div className="col-span-3 text-sm text-gray-700">{s.oic_name || '—'}</div>
                 <div className="col-span-3 text-xs text-gray-500 italic">{s.rotation_note || '—'}</div>
-                <div className="col-span-2 text-xs font-mono text-gray-500">{labels}</div>
+                <div className="col-span-2 text-xs font-mono text-gray-500">
+                  {labels}
+                  {s.firstdue_checklist_id && (
+                    <span className="ml-2 inline-block bg-blue-50 text-blue-600 border border-blue-200 rounded px-1.5 py-0.5 text-xs font-sans font-medium">
+                      FD linked
+                    </span>
+                  )}
+                </div>
                 <div className="col-span-1 flex gap-1 justify-end">
                   <button onClick={() => openEdit(s)}
                     className="p-1.5 text-gray-300 hover:text-gray-600 hover:bg-gray-100 rounded opacity-0 group-hover:opacity-100 transition-all">
@@ -177,6 +188,18 @@ export default function SlotsPage() {
                   placeholder="Officer, Driver" />
                 <p className="text-xs text-gray-400 mt-1">
                   E.g. <code>Officer, Driver</code> or <code>Engine 23, Engine 24</code>
+                </p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  FirstDue Checklist ID <span className="text-gray-400 font-normal">(optional — enables auto-sync)</span>
+                </label>
+                <input className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 font-mono"
+                  value={form.firstdue_checklist_id}
+                  onChange={e => setForm(f => ({ ...f, firstdue_checklist_id: e.target.value }))}
+                  placeholder="e.g. checklist-abc123" />
+                <p className="text-xs text-gray-400 mt-1">
+                  When set, completions recorded in FirstDue will automatically sync to this slot.
                 </p>
               </div>
             </div>

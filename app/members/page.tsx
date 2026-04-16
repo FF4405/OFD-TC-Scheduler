@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { UserPlus, Edit2, Trash2, Mail, AlertTriangle } from 'lucide-react';
+import Link from 'next/link';
+import { UserPlus, Edit2, Trash2, Mail, AlertTriangle, History } from 'lucide-react';
 
 interface Member {
   id: number;
@@ -244,6 +245,11 @@ function MemberTable({ members, onEdit, onDelete, title, dim }: {
               <td className="px-4 py-2.5 text-xs text-gray-500">{m.remarks || '—'}</td>
               <td className="px-4 py-2.5">
                 <div className="flex items-center gap-1 justify-end">
+                  <Link href={`/members/${m.id}`}
+                    className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                    title="View history">
+                    <History size={13} />
+                  </Link>
                   <button onClick={() => onEdit(m)}
                     className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors">
                     <Edit2 size={13} />

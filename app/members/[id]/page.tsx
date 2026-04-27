@@ -14,7 +14,6 @@ interface Member {
   status: string;
   remarks: string | null;
   active: number;
-  firstdue_user_id: string | null;
 }
 
 interface PeriodEntry {
@@ -118,9 +117,6 @@ export default function MemberHistoryPage() {
                 <a href={`mailto:${member.email}`} className="flex items-center gap-1 text-blue-500 hover:underline">
                   <Mail size={13} /> {member.email}
                 </a>
-              )}
-              {member.firstdue_user_id && (
-                <span className="text-gray-400">FirstDue ID: {member.firstdue_user_id}</span>
               )}
             </div>
             {member.remarks && (

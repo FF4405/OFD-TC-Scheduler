@@ -1,7 +1,7 @@
 # OFD Scheduler - Windows Service & Task Scheduler installer
 # Run this script once as Administrator to:
 #   1. Install PM2 as a Windows service (auto-starts app on reboot)
-#   2. Register Windows Task Scheduler tasks for Monday reminders and FirstDue sync
+#   2. Register Windows Task Scheduler tasks for Monday reminders
 #
 # Prerequisites (install before running):
 #   - Node.js 20+ from https://nodejs.org/
@@ -18,7 +18,6 @@
 param(
     [int]$Port = 3000,
     [string]$RemindTime = "08:00",  # Monday reminder time (24h format)
-    [string]$SyncInterval = "Hourly" # FirstDue sync frequency
 )
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -52,7 +51,7 @@ if (-not (Test-Path ".env.local")) {
         Copy-Item ".env.local.example" ".env.local"
         Write-Warning ".env.local created from template. EDIT IT NOW before continuing."
         Write-Warning "  Required: MAILGUN_API_KEY, MAILGUN_DOMAIN, NOTIFY_CRON_SECRET"
-        Write-Warning "  Optional: FIRSTDUE_API_KEY, FIRSTDUE_BASE_URL"
+        Write-Warning "  Required: BASE_URL, NOTIFY_CRON_SECRET"
         Invoke-Item ".env.local"
         Read-Host "Press Enter after editing .env.local to continue"
     } else {
@@ -141,31 +140,6 @@ Register-ScheduledTask `
 
 Write-Host "  Registered: '$reminderTaskName' (every Monday at $RemindTime)" -ForegroundColor Green
 
-# Task 2: Hourly FirstDue sync
-$syncTaskName = "OFD FirstDue Sync"
-$syncScript = @"
-Invoke-WebRequest -Uri '$BaseUrl/api/cron/sync-firstdue' -Method POST -Headers @{'x-cron-secret'='$cronSecret'} -UseBasicParsing | Out-Null
-"@
-
-Unregister-ScheduledTask -TaskName $syncTaskName -Confirm:$false -ErrorAction SilentlyContinue
-
-$syncAction = New-ScheduledTaskAction `
-    -Execute "powershell.exe" `
-    -Argument "-NonInteractive -Command `"$syncScript`""
-
-$syncTrigger = New-ScheduledTaskTrigger -RepetitionInterval (New-TimeSpan -Hours 1) -Once -At (Get-Date)
-
-Register-ScheduledTask `
-    -TaskName $syncTaskName `
-    -Action $syncAction `
-    -Trigger $syncTrigger `
-    -Settings $taskSettings `
-    -RunLevel Highest `
-    -Description "Polls FirstDue API for completed apparatus checks and syncs them into OFD Scheduler." `
-    | Out-Null
-
-Write-Host "  Registered: '$syncTaskName' (every hour)" -ForegroundColor Green
-
 # ── Done ──────────────────────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "=====================================" -ForegroundColor Green
@@ -179,7 +153,4 @@ Write-Host "  Task Sched:  taskschd.msc" -ForegroundColor White
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Yellow
 Write-Host "  1. Open $BaseUrl in a browser to verify the app is running."
-Write-Host "  2. Go to Slots and enter FirstDue Checklist IDs for each apparatus."
-Write-Host "  3. Go to Members and enter FirstDue User IDs for each firefighter."
-Write-Host "  4. Test the reminder: Start-ScheduledTask '$reminderTaskName'"
-Write-Host "  5. Test the sync:     Start-ScheduledTask '$syncTaskName'"
+Write-Host "  2. Test the reminder: Start-ScheduledTask '$reminderTaskName'"

@@ -1,6 +1,6 @@
 # Oradell Fire Department — TC Scheduler
 
-Web app for managing apparatus and equipment check assignments, email reminders, and FirstDue sync for the Oradell Fire Department.
+Web app for managing apparatus and equipment check assignments and email reminders for the Oradell Fire Department.
 
 ---
 
@@ -9,7 +9,6 @@ Web app for managing apparatus and equipment check assignments, email reminders,
 - **Schedule grid** — assign firefighters to apparatus checks for 4–5 week periods
 - **Weekly completion tracking** — click to mark checks done; overdue cells highlight red
 - **Email reminders via Mailgun** — send manually from the dashboard or automatically every Monday morning
-- **FirstDue sync** — hourly poll auto-marks completions pulled from FirstDue
 - **Member history** — per-firefighter page showing all assignments, completion rates, and notification log
 
 ---
@@ -61,9 +60,6 @@ NOTIFY_CRON_SECRET=<any long random string — e.g. 32+ random characters>
 MAILGUN_API_KEY=<from app.mailgun.com → API Keys>
 MAILGUN_DOMAIN=<your Mailgun sending domain>
 MAILGUN_FROM=OFD Checks <checks@mg.yourdomain.com>
-
-FIRSTDUE_API_KEY=<from your FirstDue department admin>
-FIRSTDUE_BASE_URL=https://api.firstdue.com
 ```
 
 > `NOTIFY_CRON_SECRET` protects the automated reminder endpoints. Set it to any random string — it just needs to match between `.env.local` and the Task Scheduler tasks (the installer handles this automatically).
@@ -88,9 +84,8 @@ The installer will:
 2. Run `npm install` and `npm run build`
 3. Install **PM2** globally and start the app
 4. Register PM2 as a **Windows service** (auto-starts on reboot)
-5. Create two **Windows Task Scheduler** tasks:
+5. Create a **Windows Task Scheduler** task:
    - **OFD Monday Reminder** — fires every Monday at 8:00 AM, emails anyone who hasn't completed their check
-   - **OFD FirstDue Sync** — fires every hour, pulls completions from FirstDue and marks them in the tracker
 
 When complete, the installer prints the app URL and next steps.
 
@@ -104,28 +99,7 @@ You should see the House Committee Assignments schedule grid.
 
 ---
 
-### Step 6 — Connect FirstDue
-
-This is a one-time setup after the app is running.
-
-**Map apparatus to FirstDue checklists:**
-
-1. Go to **Slots** in the top nav
-2. Click the edit icon on each apparatus row
-3. Enter the **FirstDue Checklist ID** for that apparatus (get these from your FirstDue admin or the FirstDue web portal)
-4. Save
-
-**Map firefighters to FirstDue users:**
-
-1. Go to **Members** in the top nav
-2. Click the history icon (clock) on each member row
-3. Note the member's **FirstDue User ID** and enter it on their profile (get these from FirstDue)
-
-Once both are set, the hourly sync will automatically mark checks as complete when they're recorded in FirstDue.
-
----
-
-### Step 7 — Verify everything works
+### Step 6 — Verify everything works
 
 **Test the Monday reminder manually:**
 
@@ -134,14 +108,6 @@ Start-ScheduledTask -TaskName "OFD Monday Reminder"
 ```
 
 Check the notification log by clicking the history icon on any member who should have received an email.
-
-**Test the FirstDue sync manually:**
-
-```powershell
-Start-ScheduledTask -TaskName "OFD FirstDue Sync"
-```
-
-The dashboard will show "FirstDue synced just now" in the period date bar if configured correctly.
 
 **Check PM2 status:**
 

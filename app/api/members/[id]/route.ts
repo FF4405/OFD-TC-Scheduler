@@ -8,7 +8,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   const member = db.prepare('SELECT * FROM members WHERE id = ?').get(id) as {
     id: number; line_number: string | null; name: string; email: string | null;
-    status: string; remarks: string | null; active: number; firstdue_user_id: string | null;
+    status: string; remarks: string | null; active: number;
   } | undefined;
 
   if (!member) {
@@ -84,11 +84,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const db = getDb();
-  const { line_number, name, email, status, remarks, active, firstdue_user_id } = await req.json();
+  const { line_number, name, email, status, remarks, active } = await req.json();
   db.prepare(`
-    UPDATE members SET line_number=?, name=?, email=?, status=?, remarks=?, active=?, firstdue_user_id=?
+    UPDATE members SET line_number=?, name=?, email=?, status=?, remarks=?, active=?
     WHERE id=?
-  `).run(line_number || null, name, email || null, status, remarks || null, active ? 1 : 0, firstdue_user_id || null, id);
+  `).run(line_number || null, name, email || null, status, remarks || null, active ? 1 : 0, id);
   const member = db.prepare('SELECT * FROM members WHERE id = ?').get(id);
   return NextResponse.json(member);
 }

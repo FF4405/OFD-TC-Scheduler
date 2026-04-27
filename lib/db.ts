@@ -93,25 +93,7 @@ function initializeSchema(db: Database.Database) {
       sent_at       TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
-    -- Log of each FirstDue sync run
-    CREATE TABLE IF NOT EXISTS firstdue_sync_log (
-      id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-      synced_at          TEXT NOT NULL DEFAULT (datetime('now')),
-      completions_found  INTEGER NOT NULL DEFAULT 0,
-      completions_new    INTEGER NOT NULL DEFAULT 0,
-      errors             TEXT   -- JSON array of error strings, or NULL
-    );
   `);
-
-  // Add columns introduced after initial schema (idempotent guards)
-  const slotCols = (db.prepare("PRAGMA table_info(assignment_slots)").all() as { name: string }[]).map(c => c.name);
-  if (!slotCols.includes('firstdue_checklist_id')) {
-    db.exec("ALTER TABLE assignment_slots ADD COLUMN firstdue_checklist_id TEXT");
-  }
-  const memberCols = (db.prepare("PRAGMA table_info(members)").all() as { name: string }[]).map(c => c.name);
-  if (!memberCols.includes('firstdue_user_id')) {
-    db.exec("ALTER TABLE members ADD COLUMN firstdue_user_id TEXT");
-  }
 
   const count = (db.prepare('SELECT COUNT(*) as c FROM members').get() as { c: number }).c;
   if (count === 0) seedData(db);

@@ -22,7 +22,7 @@ if (-not (Test-Path ".env.local")) {
     Write-Warning ".env.local not found. Copying from .env.local.example..."
     if (Test-Path ".env.local.example") {
         Copy-Item ".env.local.example" ".env.local"
-        Write-Warning "Please edit .env.local and add your Mailgun, FirstDue, and other credentials."
+        Write-Warning "Please edit .env.local and add your Mailgun and other credentials."
     } else {
         Write-Error ".env.local.example not found. Cannot continue."
         exit 1

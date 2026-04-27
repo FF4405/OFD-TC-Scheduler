@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { format, parseISO } from 'date-fns';
 import {
-  CheckCircle2, Circle, AlertTriangle, Mail, ChevronDown, RefreshCw, Plus, Zap
+  CheckCircle2, Circle, AlertTriangle, Mail, ChevronDown, RefreshCw, Plus
 } from 'lucide-react';
 
 interface WeekCell {
@@ -50,17 +50,6 @@ interface AllPeriods {
   is_current: number;
 }
 
-interface FirstDueStatus {
-  configured: boolean;
-  slotsConfigured?: number;
-  latest?: {
-    synced_at: string;
-    completions_found: number;
-    completions_new: number;
-    errors: string[] | null;
-  } | null;
-}
-
 export default function SchedulePage() {
   const [data, setData] = useState<PeriodData | null>(null);
   const [allPeriods, setAllPeriods] = useState<AllPeriods[]>([]);
@@ -70,7 +59,6 @@ export default function SchedulePage() {
   const [notifyModal, setNotifyModal] = useState<{ week: string; assignmentId?: number } | null>(null);
   const [notifyRecipients, setNotifyRecipients] = useState<NotifyRecipient[] | null>(null);
   const [notifyLoading, setNotifyLoading] = useState(false);
-  const [firstDueStatus, setFirstDueStatus] = useState<FirstDueStatus | null>(null);
 
   const fetchPeriods = async () => {
     const res = await fetch('/api/periods');
@@ -92,7 +80,6 @@ export default function SchedulePage() {
 
   useEffect(() => {
     fetchPeriods();
-    fetch('/api/firstdue/status').then(r => r.json()).then(setFirstDueStatus).catch(() => null);
   }, []);
   useEffect(() => {
     if (selectedPeriodId) fetchData(selectedPeriodId);
@@ -224,17 +211,6 @@ export default function SchedulePage() {
             <span>{weeks.length} weeks</span>
             <span className="text-gray-300">·</span>
             <span>2nd Monday of each month</span>
-            {firstDueStatus?.configured && (
-              <>
-                <span className="text-gray-300">·</span>
-                <span className="flex items-center gap-1 text-blue-600">
-                  <Zap size={11} />
-                  {firstDueStatus.latest
-                    ? <>FirstDue synced {format(parseISO(firstDueStatus.latest.synced_at), 'M/d h:mm a')} · {firstDueStatus.latest.completions_new} new</>
-                    : 'FirstDue connected (no sync yet)'}
-                </span>
-              </>
-            )}
           </div>
         )}
 

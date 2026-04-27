@@ -44,7 +44,8 @@ fi
 
 # ── 2. Fix ownership of the app directory ─────────────────────────────────────
 echo "Fixing directory permissions..."
-CURRENT_USER="$(whoami)"
+# When invoked via sudo, use the original user rather than root
+CURRENT_USER="${SUDO_USER:-$(whoami)}"
 sudo chown -R "$CURRENT_USER":"$CURRENT_USER" "$APP_DIR"
 
 # ── 3. Create data directory for SQLite ───────────────────────────────────────

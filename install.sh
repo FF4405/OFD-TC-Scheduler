@@ -50,16 +50,35 @@ sudo chown -R "$CURRENT_USER":"$CURRENT_USER" "$APP_DIR"
 # ── 3. Create data directory for SQLite ───────────────────────────────────────
 mkdir -p "$APP_DIR/data"
 
-# ── 4. Install npm dependencies ───────────────────────────────────────────────
+# ── 4. Ensure enough memory (create swap if needed) ───────────────────────────
+TOTAL_MEM_MB=$(awk '/MemTotal/ {printf "%d", $2/1024}' /proc/meminfo)
+SWAP_MB=$(awk '/SwapTotal/ {printf "%d", $2/1024}' /proc/meminfo)
+AVAILABLE_MB=$((TOTAL_MEM_MB + SWAP_MB))
+
+if [ "$AVAILABLE_MB" -lt 1024 ]; then
+  echo "Low memory detected (${TOTAL_MEM_MB} MB RAM, ${SWAP_MB} MB swap)."
+  if [ "$SWAP_MB" -eq 0 ]; then
+    echo "Creating 1 GB swap file at /swapfile..."
+    sudo fallocate -l 1G /swapfile 2>/dev/null || sudo dd if=/dev/zero of=/swapfile bs=1M count=1024 status=progress
+    sudo chmod 600 /swapfile
+    sudo mkswap /swapfile
+    sudo swapon /swapfile
+    echo "Swap enabled."
+  else
+    echo "Existing swap in use; proceeding."
+  fi
+fi
+
+# ── 5. Install npm dependencies ───────────────────────────────────────────────
 echo "Installing npm dependencies..."
 cd "$APP_DIR"
-npm install
+NODE_OPTIONS="--max-old-space-size=512" npm install
 
-# ── 5. Build the Next.js app ──────────────────────────────────────────────────
+# ── 6. Build the Next.js app ──────────────────────────────────────────────────
 echo "Building the application..."
-npm run build
+NODE_OPTIONS="--max-old-space-size=512" npm run build
 
-# ── 6. Optional: install as a systemd service ─────────────────────────────────
+# ── 7. Optional: install as a systemd service ─────────────────────────────────
 read -rp "Install as a systemd service to run on boot? [y/N] " INSTALL_SERVICE
 if [[ "${INSTALL_SERVICE,,}" == "y" ]]; then
   PORT="${PORT:-3000}"

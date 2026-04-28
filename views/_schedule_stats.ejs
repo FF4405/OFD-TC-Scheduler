@@ -1,0 +1,19 @@
+<%
+  const currentWeekIdx = weeks.indexOf(currentWeek);
+  const completedThisWeek = currentWeek
+    ? rows.filter(r => r.weekData[currentWeekIdx] && r.weekData[currentWeekIdx].completion).length
+    : 0;
+  const pendingThisWeek = rows.length - completedThisWeek;
+%>
+<% if (currentWeek) { %>
+  <span class="flex-center gap-1" style="color:var(--success);font-weight:600;font-size:12px">
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>
+    <%= completedThisWeek %>/<%= rows.length %> done this week
+  </span>
+  <% if (pendingThisWeek > 0) { %>
+    <button class="btn btn-secondary btn-sm" onclick="openNotify('<%= currentWeek %>')">
+      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+      Remind <%= pendingThisWeek %> pending
+    </button>
+  <% } %>
+<% } %>

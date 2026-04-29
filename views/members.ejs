@@ -39,6 +39,7 @@
           <th>Email</th>
           <th style="width:90px">Status</th>
           <th style="width:80px">Remarks</th>
+          <th style="width:60px;text-align:center" title="Rotation queue position — lower = assigned sooner">Queue</th>
           <th style="width:80px"></th>
         </tr>
       </thead>
@@ -61,6 +62,11 @@
           </td>
           <td><span class="badge badge-<%= m.status === '50yr' ? '50yr' : m.status %>"><%= statusLabel(m.status) %></span></td>
           <td class="text-muted text-xs"><%= m.remarks || '—' %></td>
+          <td style="text-align:center">
+            <% if (m.queue_rank) { %>
+              <span class="mono text-xs" style="color:<%= m.queue_rank<=8?'var(--warning)':'var(--text-muted)' %>" title="Rotation queue position">#<%= m.queue_rank %></span>
+            <% } else { %><span class="text-muted">—</span><% } %>
+          </td>
           <td>
             <div class="flex-center gap-1" style="justify-content:flex-end">
               <a href="/members/<%= m.id %>" class="btn btn-icon btn-sm" title="View history">

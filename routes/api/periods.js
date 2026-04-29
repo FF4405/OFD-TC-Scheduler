@@ -91,108 +91,179 @@ router.get('/:id', (req, res) => {
 });
 
 router.post('/auto-generate', (req, res) => {
-  const db = getDb();
+  try {
+    const db = getDb();
 
-  // Read settings
-  const settingRows = db.prepare('SELECT key, value FROM settings').all();
-  const s = {};
-  for (const r of settingRows) s[r.key] = r.value;
-  const months = parseInt(s.auto_schedule_months || '6', 10);
-  const missNum = parseFloat(s.repeat_miss_num || '3');
-  const missDen = parseFloat(s.repeat_miss_den || '4');
-  const missThreshold = missNum / missDen;
+    // Settings
+    const s = {};
+    for (const r of db.prepare('SELECT key, value FROM settings').all()) s[r.key] = r.value;
+    const months = parseInt(s.auto_schedule_months || '6', 10);
+    const missNum = parseFloat(s.repeat_miss_num || '3');
+    const missDen = parseFloat(s.repeat_miss_den || '4');
+    const missThreshold = missNum / missDen;
 
-  // Get all upcoming 2nd Mondays (enough to cover N months)
-  const candidates = upcomingSecondMondays(months + 2).filter(d => {
+    // Upcoming 2nd Mondays not yet covered
     const cutoff = new Date();
     cutoff.setMonth(cutoff.getMonth() + months);
-    return d <= cutoff.toISOString().split('T')[0];
-  });
+    const cutoffStr = cutoff.toISOString().split('T')[0];
+    const candidates = upcomingSecondMondays(months * 2).filter(d => d <= cutoffStr);
+    const existingDates = new Set(db.prepare('SELECT start_date FROM periods').all().map(p => p.start_date));
+    const toCreate = candidates.filter(d => !existingDates.has(d));
 
-  // Dates that already have a period
-  const existing = new Set(
-    db.prepare('SELECT start_date FROM periods').all().map(p => p.start_date)
-  );
+    if (toCreate.length === 0) {
+      return res.json({ created: 0, periods: [], message: 'All periods already exist' });
+    }
 
-  const toCreate = candidates.filter(d => !existing.has(d));
-  if (toCreate.length === 0) {
-    return res.json({ created: 0, periods: [], message: 'All periods already exist' });
-  }
+    // All slots in sort order
+    const allSlots = db.prepare('SELECT * FROM assignment_slots ORDER BY sort_order').all();
 
-  // Most recent period's slot assignments (for copying)
-  const sourcePeriod = db.prepare(
-    'SELECT * FROM periods ORDER BY start_date DESC LIMIT 1'
-  ).get();
+    // Most recent period that has actual completion data → use for repeat/graduate logic
+    const sourcePeriod = db.prepare(`
+      SELECT p.* FROM periods p
+      WHERE EXISTS (
+        SELECT 1 FROM period_assignments pa
+        JOIN weekly_completions wc ON wc.assignment_id = pa.id
+        WHERE pa.period_id = p.id
+      )
+      ORDER BY p.start_date DESC LIMIT 1
+    `).get() || db.prepare('SELECT * FROM periods ORDER BY start_date DESC LIMIT 1').get();
 
-  const sourceAssignments = sourcePeriod
-    ? db.prepare('SELECT * FROM period_assignments WHERE period_id = ?').all(sourcePeriod.id)
-    : [];
+    // slot_id → member_id for slots where previous member should repeat (bad attendance)
+    const repeatSlotToMember = {};
 
-  // Helper: get completion count for a period_assignment
-  const getCompletions = db.prepare(
-    'SELECT COUNT(*) as c FROM weekly_completions WHERE assignment_id = ?'
-  );
+    if (sourcePeriod) {
+      const srcAssignments = db.prepare(`
+        SELECT pa.id, pa.slot_id, pa.member_id,
+               (SELECT COUNT(*) FROM weekly_completions wc WHERE wc.assignment_id = pa.id) as completed_count
+        FROM period_assignments pa
+        WHERE pa.period_id = ?
+      `).all(sourcePeriod.id);
 
-  const insAssignment = db.prepare(`
-    INSERT INTO period_assignments (period_id, slot_id, member_id, is_repeat)
-    VALUES (?, ?, ?, ?)
-    ON CONFLICT(period_id, slot_id) DO NOTHING
-  `);
+      const srcWeekCount = getPeriodWeeks(sourcePeriod.start_date).length;
+      const graduatingIds = [];
 
-  const created = [];
-
-  const txn = db.transaction(() => {
-    for (const startDate of toCreate) {
-      const weeks = getPeriodWeeks(startDate);
-      const weekCount = weeks.length;
-      const name = format(parseISO(startDate), 'MMMM yyyy');
-
-      const result = db.prepare(`
-        INSERT INTO periods (name, start_date, week_count, is_current)
-        VALUES (?, ?, ?, 0)
-      `).run(name, startDate, weekCount);
-      const periodId = result.lastInsertRowid;
-
-      for (const sa of sourceAssignments) {
-        let isRepeat = 0;
-        if (sourcePeriod && sa.member_id) {
-          const srcWeeks = getPeriodWeeks(sourcePeriod.start_date).length;
-          const completedCount = getCompletions.get(sa.id).c;
-          const missRate = srcWeeks > 0 ? (srcWeeks - completedCount) / srcWeeks : 0;
-          isRepeat = missRate >= missThreshold ? 1 : 0;
+      for (const a of srcAssignments) {
+        if (!a.member_id) continue;
+        const missRate = srcWeekCount > 0 ? (srcWeekCount - a.completed_count) / srcWeekCount : 0;
+        if (missRate >= missThreshold) {
+          // Bad attendance → repeat the same slot next period
+          repeatSlotToMember[a.slot_id] = a.member_id;
+        } else if (a.completed_count > 0) {
+          // Good attendance → push to back of rotation
+          graduatingIds.push(a.member_id);
         }
-        insAssignment.run(periodId, sa.slot_id, sa.member_id, isRepeat);
       }
 
-      created.push({ id: periodId, name, start_date: startDate, week_count: weekCount });
+      // Push graduating members to back of rotation, preserving their relative order
+      if (graduatingIds.length > 0) {
+        const maxPos = db.prepare('SELECT COALESCE(MAX(rotation_position), 0) as m FROM members').get().m;
+        const grads = db.prepare(
+          `SELECT id FROM members WHERE id IN (${graduatingIds.map(() => '?').join(',')}) ORDER BY rotation_position ASC NULLS LAST`
+        ).all(...graduatingIds);
+        const updPos = db.prepare('UPDATE members SET rotation_position = ? WHERE id = ?');
+        let pos = maxPos;
+        for (const m of grads) updPos.run(++pos, m.id);
+      }
     }
-  });
 
-  txn();
-  res.json({ created: created.length, periods: created });
+    // Rotation queue: active eligible members ordered by position (re-read after graduation updates)
+    const rotationIds = db.prepare(`
+      SELECT id FROM members
+      WHERE active = 1 AND status != 'retired' AND name != 'NOT ASSIGNED'
+      ORDER BY rotation_position ASC NULLS LAST, id ASC
+    `).all().map(r => r.id);
+
+    const insAssignment = db.prepare(`
+      INSERT INTO period_assignments (period_id, slot_id, member_id, is_repeat)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(period_id, slot_id) DO NOTHING
+    `);
+
+    const txn = db.transaction(() => {
+      const created = [];
+      let rotationIndex = 0; // advances continuously across periods
+
+      for (let pi = 0; pi < toCreate.length; pi++) {
+        const startDate = toCreate[pi];
+        const weekCount = getPeriodWeeks(startDate).length;
+        const name = format(parseISO(startDate), 'MMMM yyyy');
+
+        const periodId = db.prepare(
+          'INSERT INTO periods (name, start_date, week_count, is_current) VALUES (?, ?, ?, 0)'
+        ).run(name, startDate, weekCount).lastInsertRowid;
+
+        const assignedInPeriod = new Set();
+
+        // First pass: repeating slots (only applied to first new period)
+        if (pi === 0) {
+          for (const slot of allSlots) {
+            const memberId = repeatSlotToMember[slot.id];
+            if (memberId) {
+              assignedInPeriod.add(memberId);
+              insAssignment.run(periodId, slot.id, memberId, 1);
+            }
+          }
+        }
+
+        // Second pass: fill remaining slots from rotation (circular)
+        for (const slot of allSlots) {
+          if (pi === 0 && repeatSlotToMember[slot.id]) continue; // already handled
+
+          // Advance past members already assigned in this period
+          let tries = 0;
+          while (tries < rotationIds.length && assignedInPeriod.has(rotationIds[rotationIndex % rotationIds.length])) {
+            rotationIndex++;
+            tries++;
+          }
+
+          const memberId = rotationIds.length > 0 ? rotationIds[rotationIndex % rotationIds.length] : null;
+          if (memberId) {
+            assignedInPeriod.add(memberId);
+            rotationIndex++;
+          }
+          insAssignment.run(periodId, slot.id, memberId, 0);
+        }
+
+        created.push({ id: periodId, name, start_date: startDate, week_count: weekCount });
+      }
+
+      return created;
+    });
+
+    const created = txn();
+    res.json({ created: created.length, periods: created });
+  } catch (err) {
+    console.error('auto-generate error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.patch('/:id', (req, res) => {
-  const { id } = req.params;
-  const db = getDb();
-  const { name, is_current, assignments } = req.body;
+  try {
+    const { id } = req.params;
+    const db = getDb();
+    const { name, is_current, assignments } = req.body;
 
-  const txn = db.transaction(() => {
-    if (is_current) db.prepare('UPDATE periods SET is_current = 0').run();
-    db.prepare('UPDATE periods SET name=?, is_current=? WHERE id=?')
-      .run(name, is_current ? 1 : 0, id);
-    if (assignments && Array.isArray(assignments)) {
-      const upsert = db.prepare(`
-        INSERT INTO period_assignments (period_id, slot_id, member_id)
-        VALUES (?, ?, ?)
-        ON CONFLICT(period_id, slot_id) DO UPDATE SET member_id=excluded.member_id
-      `);
-      for (const a of assignments) upsert.run(id, a.slot_id, a.member_id || null);
-    }
-  });
+    const txn = db.transaction(() => {
+      if (is_current) db.prepare('UPDATE periods SET is_current = 0').run();
+      db.prepare('UPDATE periods SET name=?, is_current=? WHERE id=?')
+        .run(name, is_current ? 1 : 0, id);
+      if (assignments && Array.isArray(assignments)) {
+        const upsert = db.prepare(`
+          INSERT INTO period_assignments (period_id, slot_id, member_id)
+          VALUES (?, ?, ?)
+          ON CONFLICT(period_id, slot_id) DO UPDATE SET member_id=excluded.member_id
+        `);
+        for (const a of assignments) upsert.run(id, a.slot_id, a.member_id || null);
+      }
+    });
 
-  txn();
-  res.json(db.prepare('SELECT * FROM periods WHERE id = ?').get(id));
+    txn();
+    res.json(db.prepare('SELECT * FROM periods WHERE id = ?').get(id));
+  } catch (err) {
+    console.error('PATCH /api/periods error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

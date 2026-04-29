@@ -136,6 +136,15 @@ router.get('/members', (req, res) => {
       CASE WHEN line_number = '' OR line_number IS NULL THEN 1 ELSE 0 END,
       CAST(line_number AS INTEGER), name
   `).all();
+
+  // Compute rotation queue rank (1 = next up) among active eligible members
+  const rotationOrdered = members
+    .filter(m => m.active && m.status !== 'retired' && m.name !== 'NOT ASSIGNED')
+    .slice()
+    .sort((a, b) => (a.rotation_position ?? 999999) - (b.rotation_position ?? 999999));
+  const rankMap = new Map(rotationOrdered.map((m, i) => [m.id, i + 1]));
+  for (const m of members) m.queue_rank = rankMap.get(m.id) ?? null;
+
   res.render('members', locals(req, { members }));
 });
 

@@ -21,6 +21,9 @@ router.post('/', (req, res) => {
     INSERT INTO members (line_number, name, email, status, remarks, active)
     VALUES (?, ?, ?, ?, ?, 1)
   `).run(line_number || null, name, email || null, status || 'active', remarks || null);
+  // Place new member at the back of the rotation
+  const maxPos = db.prepare('SELECT COALESCE(MAX(rotation_position), 0) as m FROM members').get().m;
+  db.prepare('UPDATE members SET rotation_position = ? WHERE id = ?').run(maxPos + 1, result.lastInsertRowid);
   const member = db.prepare('SELECT * FROM members WHERE id = ?').get(result.lastInsertRowid);
   res.status(201).json(member);
 });

@@ -274,7 +274,34 @@ router.get('/periods/:id', (req, res) => {
 
   const oicGroups = buildOicSlotGroups(slots);
 
+  // Include is_repeat per slot
+  const repeatSet = new Set(
+    db.prepare('SELECT slot_id FROM period_assignments WHERE period_id = ? AND is_repeat = 1').all(id).map(r => r.slot_id)
+  );
+  for (const s of slots) s.is_repeat = repeatSet.has(s.id) ? 1 : 0;
+
   res.render('period-detail', locals(req, { period, slots, members, assignments, oicGroups }));
+});
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+
+router.get('/settings', (req, res) => {
+  const db = getDb();
+  const rows = db.prepare('SELECT key, value FROM settings').all();
+  const settings = {};
+  for (const r of rows) settings[r.key] = r.value;
+
+  const { upcomingSecondMondays: upcoming } = require('../lib/dates');
+  const months = parseInt(settings.auto_schedule_months || '6', 10);
+  const candidates = upcoming(months + 2).filter(d => {
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() + months);
+    return d <= cutoff.toISOString().split('T')[0];
+  });
+  const existingDates = new Set(db.prepare('SELECT start_date FROM periods').all().map(p => p.start_date));
+  const upcomingPeriods = candidates.map(d => ({ date: d, exists: existingDates.has(d) }));
+
+  res.render('settings', locals(req, { settings, upcomingPeriods }));
 });
 
 module.exports = router;

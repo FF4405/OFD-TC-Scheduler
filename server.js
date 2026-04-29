@@ -16,6 +16,7 @@ app.use('/api/periods', require('./routes/api/periods'));
 app.use('/api/completions', require('./routes/api/completions'));
 app.use('/api/notify', require('./routes/api/notify'));
 app.use('/api/cron', require('./routes/api/cron'));
+app.use('/api/settings', require('./routes/api/settings'));
 
 app.use((req, res) => res.status(404).send('Not found'));
 

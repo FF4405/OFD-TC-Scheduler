@@ -46,6 +46,11 @@
       <% if (slot.rotation_note) { %><div class="text-xs text-muted" style="font-style:italic"><%= slot.rotation_note %></div><% } %>
     </div>
     <div>
+      <% if (slot.is_repeat) { %>
+        <div class="mb-1">
+          <span class="badge badge-warning" title="This member missed the attendance threshold last period and is flagged to repeat">↻ Repeat</span>
+        </div>
+      <% } %>
       <select class="form-control <%= !memberId ? 'unassigned' : '' %>"
               data-slot-id="<%= slot.id %>"
               onchange="onDetailAssignChange(this)">

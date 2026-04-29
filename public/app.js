@@ -397,7 +397,7 @@ async function savePeriodAssignments() {
   btn.innerHTML = '<div class="spinner spinner-sm"></div> Saving…';
 
   try {
-    await fetch(`/api/periods/${window.PERIOD_ID}`, {
+    const res = await fetch(`/api/periods/${window.PERIOD_ID}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -406,6 +406,7 @@ async function savePeriodAssignments() {
         assignments,
       }),
     });
+    if (!res.ok) throw new Error(`Server error ${res.status}`);
     btn.className = 'btn btn-success';
     btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg> Saved!`;
     showToast('Assignments saved', 'success');
@@ -556,6 +557,56 @@ async function createPeriod() {
 const startDateSel = document.getElementById('period-start-date');
 if (startDateSel) {
   onStartDateChange(); // run once on load
+}
+
+/* ── Settings ────────────────────────────────────────────────────────────── */
+
+async function saveSettings() {
+  const data = {};
+  document.querySelectorAll('[data-setting-key]').forEach(el => {
+    data[el.dataset.settingKey] = el.value;
+  });
+  try {
+    const res = await fetch('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error(`Server error ${res.status}`);
+    showToast('Settings saved', 'success');
+  } catch (e) {
+    showToast('Failed to save settings', 'error');
+  }
+}
+
+async function autoGeneratePeriods() {
+  const monthsInput = document.querySelector('[data-setting-key="auto_schedule_months"]');
+  const months = monthsInput ? monthsInput.value : '6';
+  try {
+    const res = await fetch('/api/periods/auto-generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ months: Number(months) }),
+    });
+    if (!res.ok) throw new Error(`Server error ${res.status}`);
+    const data = await res.json();
+    if (data.created === 0) {
+      showToast(data.message || 'All periods already exist', 'info');
+    } else {
+      showToast(`Created ${data.created} period${data.created !== 1 ? 's' : ''}`, 'success');
+      setTimeout(() => location.reload(), 1200);
+    }
+  } catch (e) {
+    showToast('Failed to generate periods', 'error');
+  }
+}
+
+function copyCronUrl() {
+  const el = document.getElementById('cron-url');
+  if (!el) return;
+  navigator.clipboard.writeText(el.textContent.trim()).then(() => {
+    showToast('Cron URL copied', 'success');
+  });
 }
 
 /* ── Utility ─────────────────────────────────────────────────────────────── */

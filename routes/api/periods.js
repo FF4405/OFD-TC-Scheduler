@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { getDb } = require('../../lib/db');
-const { getPeriodWeeks } = require('../../lib/dates');
+const { getPeriodWeeks, upcomingSecondMondays } = require('../../lib/dates');
+const { format, parseISO } = require('date-fns');
 
 router.get('/', (req, res) => {
   const db = getDb();
@@ -87,6 +88,88 @@ router.get('/:id', (req, res) => {
   });
 
   res.json({ period, weeks, rows });
+});
+
+router.post('/auto-generate', (req, res) => {
+  const db = getDb();
+
+  // Read settings
+  const settingRows = db.prepare('SELECT key, value FROM settings').all();
+  const s = {};
+  for (const r of settingRows) s[r.key] = r.value;
+  const months = parseInt(s.auto_schedule_months || '6', 10);
+  const missNum = parseFloat(s.repeat_miss_num || '3');
+  const missDen = parseFloat(s.repeat_miss_den || '4');
+  const missThreshold = missNum / missDen;
+
+  // Get all upcoming 2nd Mondays (enough to cover N months)
+  const candidates = upcomingSecondMondays(months + 2).filter(d => {
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() + months);
+    return d <= cutoff.toISOString().split('T')[0];
+  });
+
+  // Dates that already have a period
+  const existing = new Set(
+    db.prepare('SELECT start_date FROM periods').all().map(p => p.start_date)
+  );
+
+  const toCreate = candidates.filter(d => !existing.has(d));
+  if (toCreate.length === 0) {
+    return res.json({ created: 0, periods: [], message: 'All periods already exist' });
+  }
+
+  // Most recent period's slot assignments (for copying)
+  const sourcePeriod = db.prepare(
+    'SELECT * FROM periods ORDER BY start_date DESC LIMIT 1'
+  ).get();
+
+  const sourceAssignments = sourcePeriod
+    ? db.prepare('SELECT * FROM period_assignments WHERE period_id = ?').all(sourcePeriod.id)
+    : [];
+
+  // Helper: get completion count for a period_assignment
+  const getCompletions = db.prepare(
+    'SELECT COUNT(*) as c FROM weekly_completions WHERE assignment_id = ?'
+  );
+
+  const insAssignment = db.prepare(`
+    INSERT INTO period_assignments (period_id, slot_id, member_id, is_repeat)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(period_id, slot_id) DO NOTHING
+  `);
+
+  const created = [];
+
+  const txn = db.transaction(() => {
+    for (const startDate of toCreate) {
+      const weeks = getPeriodWeeks(startDate);
+      const weekCount = weeks.length;
+      const name = format(parseISO(startDate), 'MMMM yyyy');
+
+      const result = db.prepare(`
+        INSERT INTO periods (name, start_date, week_count, is_current)
+        VALUES (?, ?, ?, 0)
+      `).run(name, startDate, weekCount);
+      const periodId = result.lastInsertRowid;
+
+      for (const sa of sourceAssignments) {
+        let isRepeat = 0;
+        if (sourcePeriod && sa.member_id) {
+          const srcWeeks = getPeriodWeeks(sourcePeriod.start_date).length;
+          const completedCount = getCompletions.get(sa.id).c;
+          const missRate = srcWeeks > 0 ? (srcWeeks - completedCount) / srcWeeks : 0;
+          isRepeat = missRate >= missThreshold ? 1 : 0;
+        }
+        insAssignment.run(periodId, sa.slot_id, sa.member_id, isRepeat);
+      }
+
+      created.push({ id: periodId, name, start_date: startDate, week_count: weekCount });
+    }
+  });
+
+  txn();
+  res.json({ created: created.length, periods: created });
 });
 
 router.patch('/:id', (req, res) => {

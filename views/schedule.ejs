@@ -1,0 +1,118 @@
+<%- include('_head', { currentPath, pageClass: '' }) %>
+
+<div class="schedule-header">
+  <h1>Oradell Fire Department</h1>
+  <p class="sub">House Committee Assignments</p>
+  <p class="note">Complete all checks by 7PM each Monday</p>
+  <p class="rule">Periods run from the <strong>2nd Monday of each month</strong> through the Monday before the next month's 2nd Monday</p>
+</div>
+
+<div class="toolbar mt-2">
+  <div class="toolbar-left">
+    <select class="form-control" id="period-select" style="width:auto;min-width:200px" data-current-period="<%= period ? period.id : '' %>">
+      <% for (const p of allPeriods) { %>
+        <option value="<%= p.id %>" <%= period && p.id === period.id ? 'selected' : '' %>>
+          <%= p.name %><%= p.is_current ? ' (Current)' : '' %>
+        </option>
+      <% } %>
+    </select>
+    <button class="btn btn-icon btn-sm" id="refresh-btn" title="Refresh">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+    </button>
+    <a href="/periods/new" class="btn btn-secondary btn-sm">
+      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
+      New Period
+    </a>
+  </div>
+
+  <div class="toolbar-right" id="stats-bar-container">
+    <% if (period) { %>
+      <%- include('_schedule_stats', { period, weeks, rows, currentWeek }) %>
+    <% } %>
+  </div>
+</div>
+
+<% if (weeks && weeks.length > 0) { %>
+<div class="stats-bar mt-2" id="date-range-bar">
+  <strong><%= weekFmt(weeks[0]) %> – <%= weekFmt(weeks[weeks.length-1]) %></strong>
+  <span class="text-muted">·</span>
+  <span><%= weeks.length %> weeks</span>
+  <span class="text-muted">·</span>
+  <span class="text-muted">2nd Monday of each month</span>
+  <% if (period) { %>
+    <span class="text-muted" style="margin-left:auto">
+      <a href="/periods/<%= period.id %>" style="color:var(--text-muted);font-size:11px">Manage assignments →</a>
+    </span>
+  <% } %>
+</div>
+<% } %>
+
+<% if (!period) { %>
+  <div style="text-align:center;padding:60px 0">
+    <p class="text-muted mt-2">No periods have been created yet.</p>
+    <a href="/periods/new" class="btn btn-primary mt-3">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
+      Create First Period
+    </a>
+  </div>
+<% } else { %>
+<div class="overflow-x mt-3" id="grid-container">
+  <table class="grid-table" id="schedule-grid"
+         data-period-id="<%= period.id %>"
+         data-current-week="<%= currentWeek || '' %>">
+    <thead>
+      <tr>
+        <th style="width:110px">OIC</th>
+        <th style="min-width:160px">Assignment</th>
+        <th style="min-width:120px">This Period</th>
+        <% for (const w of weeks) { %>
+          <th class="week-col <%= w === currentWeek ? 'current-week' : '' %>">
+            <div><%= fmtShortDate(w) %></div>
+            <% if (w === currentWeek) { %><div style="font-size:10px;font-weight:400;margin-top:2px">← This Week</div><% } %>
+          </th>
+        <% } %>
+      </tr>
+    </thead>
+    <tbody id="grid-body">
+      <%- include('_grid_rows', { oicGroups, weeks, currentWeek }) %>
+    </tbody>
+  </table>
+</div>
+
+<div class="warning-banner">** REPEAT OFFENDERS ARE SUBJECT TO SUSPENSION — JUST DO IT! **</div>
+<% } %>
+
+<!-- Notify Modal -->
+<div class="modal-overlay hidden" id="notify-modal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <div>
+        <h2>Send Reminders</h2>
+        <p id="notify-week-label" class="text-muted"></p>
+      </div>
+      <button class="modal-close" onclick="closeModal('notify-modal')">×</button>
+    </div>
+    <div class="modal-body" id="notify-body">
+      <div class="flex-center gap-2" id="notify-loading" style="justify-content:center;padding:24px">
+        <div class="spinner"></div>
+        <span class="text-muted">Loading recipients…</span>
+      </div>
+      <div class="hidden" id="notify-content"></div>
+    </div>
+    <div class="modal-footer hidden" id="notify-footer">
+      <button class="btn btn-primary" id="notify-send-btn" onclick="sendReminders()">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+        Send Emails
+      </button>
+      <span class="text-muted text-xs">via Mailgun · logged automatically</span>
+    </div>
+  </div>
+</div>
+
+<script>
+// Inline data for client-side grid rebuild
+window.OFD_PERIOD_ID = <%= period ? period.id : 'null' %>;
+window.OFD_ALL_PERIODS = <%- JSON.stringify(allPeriods) %>;
+</script>
+
+<%- include('_foot') %>

@@ -1,0 +1,87 @@
+<%- include('_head', { currentPath, pageClass: 'page-narrow' }) %>
+
+<div class="flex-center gap-2 mb-3">
+  <a href="/periods" class="btn btn-icon btn-sm">
+    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+  </a>
+  <div style="flex:1">
+    <div class="page-title"><%= period.name %></div>
+    <div class="page-subtitle">
+      Starts <%= period.start_date %> · <%= period.week_count %> weeks
+      <% if (period.is_current) { %><span style="color:var(--success);font-weight:600"> · Current Period</span><% } %>
+    </div>
+  </div>
+  <button class="btn btn-primary" id="save-btn" onclick="savePeriodAssignments()">
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+    Save Assignments
+  </button>
+</div>
+
+<div class="alert alert-warning hidden mt-2 mb-2" id="unassigned-alert">
+  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+  <span id="unassigned-text"></span>
+</div>
+
+<div class="card">
+  <div style="background:#1c2035;border-bottom:2px solid #a07800;padding:10px 16px">
+    <div style="display:grid;grid-template-columns:100px 1fr 1fr;gap:8px">
+      <div class="text-xs fw-600" style="color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">OIC</div>
+      <div class="text-xs fw-600" style="color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Assignment</div>
+      <div class="text-xs fw-600" style="color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Assigned Member</div>
+    </div>
+  </div>
+
+  <% for (let gi = 0; gi < oicGroups.length; gi++) {
+       const { oic, slots: oicSlots } = oicGroups[gi];
+       for (let si = 0; si < oicSlots.length; si++) {
+         const slot = oicSlots[si];
+         const memberId = assignments[slot.id] || '';
+         const memberObj = members.find(m => m.id == memberId);
+  %>
+  <div style="display:grid;grid-template-columns:100px 1fr 1fr;gap:8px;align-items:start;padding:10px 16px;border-bottom:1px solid var(--border);background:<%= gi%2===0?'var(--bg-2)':'var(--bg-3)' %>">
+    <div style="font-weight:600;font-size:13px;color:var(--text-muted);padding-top:6px"><%= si===0 ? oic : '' %></div>
+    <div>
+      <div style="font-weight:600;font-size:13px"><%= slot.apparatus_name %></div>
+      <div class="text-xs text-muted"><%= slot.slot_type %></div>
+      <% if (slot.rotation_note) { %><div class="text-xs text-muted" style="font-style:italic"><%= slot.rotation_note %></div><% } %>
+    </div>
+    <div>
+      <% if (slot.is_repeat) { %>
+        <div class="mb-1">
+          <span class="badge badge-warning" title="This member missed the attendance threshold last period and is flagged to repeat">↻ Repeat</span>
+        </div>
+      <% } %>
+      <select class="form-control <%= !memberId ? 'unassigned' : '' %>"
+              data-slot-id="<%= slot.id %>"
+              onchange="onDetailAssignChange(this)">
+        <option value="">— Unassigned —</option>
+        <% for (const m of members) { %>
+          <option value="<%= m.id %>" <%= memberId == m.id ? 'selected' : '' %>>
+            <%= m.line_number ? '['+m.line_number+'] ' : '' %><%= m.name %>
+          </option>
+        <% } %>
+      </select>
+      <% if (memberObj && memberObj.email) { %>
+        <div class="text-xs text-muted mt-1"><%= memberObj.email %></div>
+      <% } %>
+    </div>
+  </div>
+  <% } } %>
+</div>
+
+<div class="flex-center gap-2 mt-3 text-muted text-xs">
+  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="m16 11 2 2 4-4"/></svg>
+  Changes are not saved until you click <strong>Save Assignments</strong>.
+</div>
+
+<div class="mt-3" style="border-top:1px solid var(--border);padding-top:12px">
+  <a href="/slots" style="font-size:12px;color:var(--accent)">Manage assignment slots →</a>
+</div>
+
+<script>
+window.PERIOD_ID = <%= period.id %>;
+window.PERIOD_NAME = <%= JSON.stringify(period.name) %>;
+window.PERIOD_IS_CURRENT = <%= period.is_current %>;
+</script>
+
+<%- include('_foot') %>

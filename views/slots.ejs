@@ -1,0 +1,91 @@
+<%- include('_head', { currentPath, pageClass: 'page-narrow' }) %>
+
+<div class="toolbar">
+  <div>
+    <div class="page-title">Assignment Slots</div>
+    <div class="page-subtitle">The fixed weekly check positions</div>
+  </div>
+  <button class="btn btn-primary" onclick="openSlotModal()">
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
+    Add Slot
+  </button>
+</div>
+
+<div class="card mt-2">
+  <div style="background:#1c2035;border-bottom:2px solid #a07800;padding:10px 16px">
+    <div style="display:grid;grid-template-columns:3fr 2fr 3fr 2fr 60px;gap:8px">
+      <div class="text-xs fw-600" style="color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Apparatus / Slot</div>
+      <div class="text-xs fw-600" style="color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">OIC</div>
+      <div class="text-xs fw-600" style="color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Rotation</div>
+      <div class="text-xs fw-600" style="color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Sub-labels</div>
+      <div></div>
+    </div>
+  </div>
+  <% for (let i = 0; i < slots.length; i++) {
+       const s = slots[i];
+       const labels = s.rotation_labels ? JSON.parse(s.rotation_labels).join(' / ') : '—';
+  %>
+  <div style="display:grid;grid-template-columns:3fr 2fr 3fr 2fr 60px;gap:8px;align-items:start;padding:11px 16px;border-bottom:<%= i<slots.length-1 ? '1px solid var(--border)' : 'none' %>;background:<%= i%2===0 ? 'var(--bg-2)' : 'var(--bg-3)' %>;transition:background .1s"
+       onmouseenter="this.style.background='var(--bg-hover)'" onmouseleave="this.style.background='<%= i%2===0 ? 'var(--bg-2)' : 'var(--bg-3)' %>'">
+    <div>
+      <div style="font-weight:600"><%= s.apparatus_name %></div>
+      <div class="text-xs text-muted"><%= s.slot_type %></div>
+    </div>
+    <div class="text-muted text-sm"><%= s.oic_name || '—' %></div>
+    <div class="text-xs text-muted" style="font-style:italic"><%= s.rotation_note || '—' %></div>
+    <div class="mono text-xs text-muted"><%= labels %></div>
+    <div class="flex-center gap-1" style="justify-content:flex-end">
+      <button class="btn btn-icon btn-sm" onclick='openSlotModal(<%- JSON.stringify(s) %>)' title="Edit">
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+      </button>
+      <button class="btn btn-icon btn-sm" onclick="deleteSlot(<%= s.id %>, '<%= (s.apparatus_name+' '+s.slot_type).replace(/'/g,"\\'") %>')" title="Delete">
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+      </button>
+    </div>
+  </div>
+  <% } %>
+</div>
+
+<p class="text-xs text-muted mt-2">Sub-labels are the alternating values shown in the weekly grid (e.g. Officer/Driver, Engine 23/Engine 24). Enter them comma-separated.</p>
+
+<!-- Slot Modal -->
+<div class="modal-overlay hidden" id="slot-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="slot-modal-title">Add Slot</h2>
+      <button class="modal-close" onclick="closeModal('slot-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="slot-id">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Apparatus Name *</label>
+          <input type="text" class="form-control" id="s-apparatus" placeholder="Tower 21">
+        </div>
+        <div class="form-group">
+          <label>Slot Type *</label>
+          <input type="text" class="form-control" id="s-type" placeholder="SCBA">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>OIC</label>
+        <input type="text" class="form-control" id="s-oic" placeholder="Lt. Jaimes">
+      </div>
+      <div class="form-group">
+        <label>Rotation Note</label>
+        <input type="text" class="form-control" id="s-note" placeholder="Alternate Sides Each Week">
+      </div>
+      <div class="form-group">
+        <label>Sub-labels <span class="text-muted" style="text-transform:none;letter-spacing:0">(comma-separated, leave blank if none)</span></label>
+        <input type="text" class="form-control" id="s-labels" placeholder="Officer, Driver">
+        <div class="text-xs text-muted mt-1">E.g. <code>Officer, Driver</code> or <code>Engine 23, Engine 24</code></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" id="slot-save-btn" onclick="saveSlot()">Add Slot</button>
+      <button class="btn btn-secondary" onclick="closeModal('slot-modal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<%- include('_foot') %>

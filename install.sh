@@ -75,11 +75,7 @@ echo "Installing npm dependencies..."
 cd "$APP_DIR"
 NODE_OPTIONS="--max-old-space-size=512" npm install
 
-# ── 6. Build the Next.js app ──────────────────────────────────────────────────
-echo "Building the application..."
-NODE_OPTIONS="--max-old-space-size=512" npm run build
-
-# ── 7. Optional: install as a systemd service ─────────────────────────────────
+# ── 6. Optional: install as a systemd service ─────────────────────────────────
 read -rp "Install as a systemd service to run on boot? [y/N] " INSTALL_SERVICE
 if [[ "${INSTALL_SERVICE,,}" == "y" ]]; then
   PORT="${PORT:-3000}"
@@ -94,7 +90,7 @@ After=network.target
 Type=simple
 User=$CURRENT_USER
 WorkingDirectory=$APP_DIR
-ExecStart=$(command -v npm) start
+ExecStart=$(command -v node) server.js
 Restart=on-failure
 RestartSec=5
 Environment=NODE_ENV=production
@@ -118,6 +114,5 @@ else
   echo ""
   echo "=== Installation complete ==="
   echo "Run the app with:  ./start.sh"
-  echo "  or manually:     npm start   (production)"
-  echo "                   npm run dev (development)"
+  echo "  or manually:     node server.js"
 fi

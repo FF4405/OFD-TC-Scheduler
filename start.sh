@@ -18,10 +18,6 @@ if [ "$MODE" = "dev" ]; then
   echo "Starting in development mode on http://localhost:$PORT"
   PORT=$PORT npm run dev
 else
-  if [ ! -d "$APP_DIR/.next" ]; then
-    echo "No build found. Run ./install.sh first, or: npm run build"
-    exit 1
-  fi
   echo "Starting in production mode on http://localhost:$PORT"
-  PORT=$PORT npm start
+  PORT=$PORT node server.js
 fi

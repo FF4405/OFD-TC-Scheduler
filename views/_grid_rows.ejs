@@ -1,0 +1,69 @@
+<% for (let gi = 0; gi < oicGroups.length; gi++) {
+     const { oic, rows: groupRows } = oicGroups[gi];
+     for (let ri = 0; ri < groupRows.length; ri++) {
+       const row = groupRows[ri];
+       const isFirstInGroup = ri === 0;
+%>
+<tr>
+  <% if (isFirstInGroup) { %>
+  <td class="oic-cell" rowspan="<%= groupRows.length %>"><%= oic %></td>
+  <% } %>
+
+  <td>
+    <div style="font-weight:600"><%= row.apparatus_name %></div>
+    <div class="text-xs text-muted"><%= row.slot_type %></div>
+    <% if (row.rotation_note) { %>
+      <div class="text-xs text-muted" style="font-style:italic;margin-top:2px"><%= row.rotation_note %></div>
+    <% } %>
+  </td>
+
+  <td>
+    <% if (row.member_name) { %>
+      <div style="font-weight:600"><%= row.member_name %></div>
+      <% if (row.member_email) { %>
+        <a href="mailto:<%= row.member_email %>" class="text-xs" style="color:var(--info)"><%= row.member_email.split('@')[0] %></a>
+      <% } %>
+    <% } else { %>
+      <a href="/periods/<%= row.period_id || '' %>" class="text-xs" style="color:var(--warning)">
+        ⚠ Unassigned
+      </a>
+    <% } %>
+  </td>
+
+  <% for (let wi = 0; wi < row.weekData.length; wi++) {
+       const cell = row.weekData[wi];
+       const isFuture = !cell.isPast && !cell.isCurrentWeek;
+       const isOverdue = cell.isPast && !cell.completion;
+       let cellClass = '';
+       if (cell.completion) cellClass = 'complete';
+       else if (isOverdue) cellClass = 'overdue';
+       else if (isFuture) cellClass = 'future';
+  %>
+  <td class="week-cell <%= cell.isCurrentWeek ? 'current-week-col' : '' %>">
+    <button
+      class="cell-btn <%= cellClass %>"
+      <%= isFuture ? 'disabled' : '' %>
+      data-assignment-id="<%= row.id %>"
+      data-week-date="<%= cell.weekDate %>"
+      data-is-complete="<%= cell.completion ? 'true' : 'false' %>"
+      data-is-future="<%= isFuture ? 'true' : 'false' %>"
+      title="<% if (cell.completion) { %>Completed — click to undo<% } else if (isFuture) { %>Future week<% } else if (isOverdue) { %>Overdue — click to mark complete<% } else { %>Click to mark complete<% } %>"
+    >
+      <% if (cell.completion) { %>
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>
+      <% } else if (isOverdue) { %>
+        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+      <% } else { %>
+        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/></svg>
+      <% } %>
+      <% if (cell.label) { %>
+        <span class="cell-label"><%= cell.label %></span>
+      <% } %>
+      <% if (cell.completion && cell.completion.completed_by) { %>
+        <span class="cell-by"><%= cell.completion.completed_by.split(' ').pop() %></span>
+      <% } %>
+    </button>
+  </td>
+  <% } %>
+</tr>
+<% } } %>

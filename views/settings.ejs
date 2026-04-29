@@ -1,0 +1,127 @@
+<%- include('_head', { currentPath, pageClass: 'page-narrow' }) %>
+
+<div class="flex-center gap-2 mb-3">
+  <div style="flex:1">
+    <div class="page-title">Settings</div>
+    <div class="page-subtitle">Notifications, auto-schedule, and repeat rules</div>
+  </div>
+  <button class="btn btn-primary" onclick="saveSettings()">
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+    Save Settings
+  </button>
+</div>
+
+<%# ── Notifications ─────────────────────────────────────────────────────── %>
+<div class="card mt-3">
+  <div class="card-header"><h2>Notifications</h2></div>
+  <div class="card-body">
+    <div class="form-row">
+      <div class="form-group">
+        <label>Reminder Day</label>
+        <select class="form-control" data-setting-key="notify_day">
+          <% [['0','Sunday'],['1','Monday'],['2','Tuesday'],['3','Wednesday'],['4','Thursday'],['5','Friday'],['6','Saturday']].forEach(([v,l]) => { %>
+            <option value="<%= v %>" <%= settings.notify_day === v ? 'selected' : '' %>><%= l %></option>
+          <% }) %>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Reminder Hour (24h)</label>
+        <input type="number" class="form-control" min="0" max="23"
+               data-setting-key="notify_hour"
+               value="<%= settings.notify_hour || '8' %>">
+      </div>
+    </div>
+
+    <div class="alert alert-info mt-2">
+      <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+      <div>
+        <strong>Automated reminders</strong> require an external cron job.
+        Set it up to call this endpoint every Monday morning:
+        <div style="margin-top:6px;display:flex;align-items:center;gap:8px">
+          <code id="cron-url" style="background:var(--bg-3);padding:4px 8px;border-radius:4px;font-size:12px;flex:1;word-break:break-all">
+            <%= process.env.APP_URL || 'http://your-server:3000' %>/api/cron/remind
+          </code>
+          <button class="btn btn-sm btn-secondary" onclick="copyCronUrl()">Copy</button>
+        </div>
+        <div class="text-xs text-muted mt-1">Required header: <code>x-cron-secret: <%= process.env.NOTIFY_CRON_SECRET ? '••••••' : '(set NOTIFY_CRON_SECRET in .env.local)' %></code></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<%# ── Repeat Rule ────────────────────────────────────────────────────────── %>
+<div class="card mt-3">
+  <div class="card-header"><h2>Repeat Rule</h2></div>
+  <div class="card-body">
+    <p class="text-muted" style="margin:0 0 12px;font-size:13px">
+      When auto-generating the next period, a member is flagged to <strong>repeat</strong> their assignment
+      if they miss this proportion of their scheduled weeks in the current period.
+    </p>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span style="font-size:14px">Repeat if member misses</span>
+      <input type="number" class="form-control" min="1" max="10" style="width:70px"
+             data-setting-key="repeat_miss_num"
+             value="<%= settings.repeat_miss_num || '3' %>">
+      <span style="font-size:14px">out of</span>
+      <input type="number" class="form-control" min="1" max="10" style="width:70px"
+             data-setting-key="repeat_miss_den"
+             value="<%= settings.repeat_miss_den || '4' %>">
+      <span style="font-size:14px">weeks</span>
+    </div>
+    <div class="text-xs text-muted mt-2">
+      Example: "3 out of 4" means a member who attended only 1 of 4 weeks (or fewer) will be assigned the same slot next period.
+    </div>
+  </div>
+</div>
+
+<%# ── Auto-Schedule ──────────────────────────────────────────────────────── %>
+<div class="card mt-3">
+  <div class="card-header">
+    <h2>Auto-Schedule</h2>
+  </div>
+  <div class="card-body">
+    <p class="text-muted" style="margin:0 0 12px;font-size:13px">
+      Automatically create upcoming periods with assignments copied from the most recent period.
+      Members flagged by the repeat rule will be marked accordingly.
+    </p>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+      <span style="font-size:14px">Generate periods</span>
+      <input type="number" class="form-control" min="1" max="12" style="width:70px"
+             data-setting-key="auto_schedule_months"
+             value="<%= settings.auto_schedule_months || '6' %>">
+      <span style="font-size:14px">months ahead</span>
+      <button class="btn btn-secondary" onclick="autoGeneratePeriods()">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        Generate Now
+      </button>
+    </div>
+
+    <div style="border-top:1px solid var(--border);padding-top:12px">
+      <div class="text-xs fw-600 text-muted mb-2" style="text-transform:uppercase;letter-spacing:.05em">Upcoming 2nd Mondays</div>
+      <table class="data-table" style="font-size:13px">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% for (const p of upcomingPeriods) { %>
+          <tr>
+            <td><%= fmtLongDate(p.date) %></td>
+            <td>
+              <% if (p.exists) { %>
+                <span class="badge badge-active">Period exists</span>
+              <% } else { %>
+                <span class="badge badge-inactive">Not created</span>
+              <% } %>
+            </td>
+          </tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<%- include('_foot') %>

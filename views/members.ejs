@@ -1,0 +1,192 @@
+<%- include('_head', { currentPath, pageClass: '' }) %>
+
+<div class="toolbar">
+  <div>
+    <div class="page-title">Members</div>
+    <div class="page-subtitle"><%= members.filter(m => m.active && m.status !== 'retired').length %> active members</div>
+  </div>
+  <button class="btn btn-primary" onclick="openMemberModal()">
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" x2="19" y1="8" y2="14"/><line x1="22" x2="16" y1="11" y2="11"/></svg>
+    Add Member
+  </button>
+</div>
+
+<div class="toolbar" style="margin-bottom:12px">
+  <div class="toolbar-left">
+    <input type="text" class="form-control" id="member-search" placeholder="Search name, email, line #…" style="width:220px" oninput="filterMembers()">
+    <select class="form-control" id="member-status-filter" style="width:auto" onchange="filterMembers()">
+      <option value="all">All statuses</option>
+      <option value="active">Active</option>
+      <option value="officer">Officer</option>
+      <option value="50yr">50-Year</option>
+      <option value="inactive">Inactive</option>
+      <option value="retired">Retired</option>
+    </select>
+  </div>
+</div>
+
+<!-- Active Roster -->
+<div class="card mt-2" id="active-table-wrap">
+  <div class="card-header">
+    <h3>Active Roster <span class="text-muted fw-600" id="active-count">(<%= members.filter(m=>m.active && m.status!=='retired').length %>)</span></h3>
+  </div>
+  <div class="overflow-x">
+    <table class="data-table" id="active-table">
+      <thead>
+        <tr>
+          <th style="width:60px">Line #</th>
+          <th>Name</th>
+          <th>Email</th>
+          <th style="width:90px">Status</th>
+          <th style="width:80px">Remarks</th>
+          <th style="width:80px"></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% for (const m of members.filter(m=>m.active && m.status!=='retired')) { %>
+        <tr class="member-row"
+            data-name="<%= m.name.toLowerCase() %>"
+            data-email="<%= (m.email||'').toLowerCase() %>"
+            data-line="<%= m.line_number||'' %>"
+            data-status="<%= m.status %>"
+            data-active="1">
+          <td class="mono muted"><%= m.line_number || '—' %></td>
+          <td style="font-weight:600"><%= m.name %></td>
+          <td>
+            <% if (m.email) { %>
+              <a href="mailto:<%= m.email %>" style="color:var(--info);font-size:12px">
+                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:3px"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg><%= m.email %>
+              </a>
+            <% } else { %><span class="text-muted">—</span><% } %>
+          </td>
+          <td><span class="badge badge-<%= m.status === '50yr' ? '50yr' : m.status %>"><%= statusLabel(m.status) %></span></td>
+          <td class="text-muted text-xs"><%= m.remarks || '—' %></td>
+          <td>
+            <div class="flex-center gap-1" style="justify-content:flex-end">
+              <a href="/members/<%= m.id %>" class="btn btn-icon btn-sm" title="View history">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
+              </a>
+              <button class="btn btn-icon btn-sm" title="Edit" onclick='openMemberModal(<%- JSON.stringify(m) %>)'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+              </button>
+              <button class="btn btn-icon btn-sm" title="Delete" onclick="deleteMember(<%= m.id %>, '<%= m.name.replace(/'/g, "\\'") %>')">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+              </button>
+            </div>
+          </td>
+        </tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Inactive / Retired -->
+<% const inactive = members.filter(m=>!m.active || m.status==='retired'); %>
+<% if (inactive.length > 0) { %>
+<div class="card mt-3" id="inactive-table-wrap" style="opacity:0.7">
+  <div class="card-header">
+    <h3>Inactive / Retired <span class="text-muted fw-600" id="inactive-count">(<%= inactive.length %>)</span></h3>
+  </div>
+  <div class="overflow-x">
+    <table class="data-table" id="inactive-table">
+      <thead>
+        <tr>
+          <th style="width:60px">Line #</th>
+          <th>Name</th>
+          <th>Email</th>
+          <th style="width:90px">Status</th>
+          <th style="width:80px">Remarks</th>
+          <th style="width:80px"></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% for (const m of inactive) { %>
+        <tr class="member-row"
+            data-name="<%= m.name.toLowerCase() %>"
+            data-email="<%= (m.email||'').toLowerCase() %>"
+            data-line="<%= m.line_number||'' %>"
+            data-status="<%= m.status %>"
+            data-active="0">
+          <td class="mono muted"><%= m.line_number || '—' %></td>
+          <td style="font-weight:600"><%= m.name %></td>
+          <td>
+            <% if (m.email) { %>
+              <a href="mailto:<%= m.email %>" style="color:var(--info);font-size:12px"><%= m.email %></a>
+            <% } else { %><span class="text-muted">—</span><% } %>
+          </td>
+          <td><span class="badge badge-<%= m.status === '50yr' ? '50yr' : m.status %>"><%= statusLabel(m.status) %></span></td>
+          <td class="text-muted text-xs"><%= m.remarks || '—' %></td>
+          <td>
+            <div class="flex-center gap-1" style="justify-content:flex-end">
+              <a href="/members/<%= m.id %>" class="btn btn-icon btn-sm" title="View history">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
+              </a>
+              <button class="btn btn-icon btn-sm" onclick='openMemberModal(<%- JSON.stringify(m) %>)'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+              </button>
+              <button class="btn btn-icon btn-sm" onclick="deleteMember(<%= m.id %>, '<%= m.name.replace(/'/g, "\\'") %>')">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+              </button>
+            </div>
+          </td>
+        </tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+</div>
+<% } %>
+
+<!-- Member Modal -->
+<div class="modal-overlay hidden" id="member-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="member-modal-title">Add Member</h2>
+      <button class="modal-close" onclick="closeModal('member-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="member-id">
+      <div class="form-row" style="grid-template-columns:80px 1fr">
+        <div class="form-group">
+          <label>Line #</label>
+          <input type="text" class="form-control" id="m-line" placeholder="43">
+        </div>
+        <div class="form-group">
+          <label>Name *</label>
+          <input type="text" class="form-control" id="m-name" placeholder="J. Koth III">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" class="form-control" id="m-email" placeholder="jkoth@oradellfire.org">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Status</label>
+          <select class="form-control" id="m-status">
+            <option value="active">Active</option>
+            <option value="officer">Officer</option>
+            <option value="50yr">50-Year</option>
+            <option value="inactive">Inactive</option>
+            <option value="retired">Retired</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Remarks</label>
+          <input type="text" class="form-control" id="m-remarks" placeholder="P&A, etc.">
+        </div>
+      </div>
+      <label class="form-check">
+        <input type="checkbox" id="m-active" checked> Active member
+      </label>
+      <div class="alert alert-danger hidden mt-2" id="member-error"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" id="member-save-btn" onclick="saveMember()">Add Member</button>
+      <button class="btn btn-secondary" onclick="closeModal('member-modal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<%- include('_foot') %>

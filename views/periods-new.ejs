@@ -1,0 +1,101 @@
+<%- include('_head', { currentPath, pageClass: 'page-narrow' }) %>
+
+<div class="flex-center gap-2 mb-3">
+  <a href="/periods" class="btn btn-icon btn-sm">
+    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+  </a>
+  <div>
+    <div class="page-title">New Period</div>
+    <div class="page-subtitle">Create a new monthly assignment period</div>
+  </div>
+</div>
+
+<div class="alert alert-info mt-2">
+  <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+  <span><strong>Periods run from the 2nd Monday of each month</strong> through the Monday before the next month's 2nd Monday. The number of weeks is calculated automatically.</span>
+</div>
+
+<div class="card mt-3">
+  <div class="card-header">
+    <h2>Period Details</h2>
+  </div>
+  <div class="card-body">
+    <div class="form-row">
+      <div class="form-group">
+        <label>Period Name *</label>
+        <input type="text" class="form-control" id="period-name" placeholder="April 2026">
+      </div>
+      <div class="form-group">
+        <label>Start Date <span class="text-muted" style="text-transform:none;letter-spacing:0">(2nd Monday)</span></label>
+        <select class="form-control" id="period-start-date" onchange="onStartDateChange()">
+          <% for (const d of secondMondays) { %>
+            <option value="<%= d %>"><%= fmtLongDate(d) %> — 2nd Monday</option>
+          <% } %>
+        </select>
+      </div>
+    </div>
+    <div class="stats-bar mt-2" id="date-range-preview" style="display:none">
+      <strong id="pr-range">—</strong>
+      <span class="text-muted">·</span>
+      <span id="pr-weeks">— weeks</span>
+      <span class="text-muted">·</span>
+      <span class="text-xs text-muted" id="pr-mondays"></span>
+    </div>
+  </div>
+</div>
+
+<div class="card mt-3">
+  <div style="background:#1c2035;border-bottom:2px solid #a07800;padding:10px 16px">
+    <div style="display:grid;grid-template-columns:100px 1fr 1fr;gap:8px">
+      <div class="text-xs fw-600" style="color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">OIC</div>
+      <div class="text-xs fw-600" style="color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Assignment</div>
+      <div class="text-xs fw-600" style="color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Assign Member</div>
+    </div>
+  </div>
+  <% for (let gi = 0; gi < oicGroups.length; gi++) {
+       const { oic, slots: oicSlots } = oicGroups[gi];
+       for (let si = 0; si < oicSlots.length; si++) {
+         const slot = oicSlots[si];
+         const memberId = currentAssignments[slot.id] || '';
+  %>
+  <div style="display:grid;grid-template-columns:100px 1fr 1fr;gap:8px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border);background:<%= gi%2===0?'var(--bg-2)':'var(--bg-3)' %>">
+    <div style="font-weight:600;font-size:13px;color:var(--text-muted)"><%= si===0 ? oic : '' %></div>
+    <div>
+      <div style="font-weight:600;font-size:13px"><%= slot.apparatus_name %></div>
+      <div class="text-xs text-muted"><%= slot.slot_type %></div>
+    </div>
+    <div>
+      <select class="form-control form-control-sm" id="slot-<%= slot.id %>"
+              data-slot-id="<%= slot.id %>"
+              data-prev-member="<%= memberId %>"
+              onchange="onAssignChange(this)">
+        <option value="">— Unassigned —</option>
+        <% for (const m of members) { %>
+          <option value="<%= m.id %>" <%= memberId == m.id ? 'selected' : '' %>>
+            <%= m.line_number ? '['+m.line_number+'] ' : '' %><%= m.name %>
+          </option>
+        <% } %>
+      </select>
+    </div>
+  </div>
+  <% } } %>
+</div>
+
+<div class="alert alert-warning hidden mt-2" id="unassigned-alert">
+  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+  <span id="unassigned-text"></span>
+</div>
+
+<div class="flex-center gap-2 mt-3" style="justify-content:flex-end">
+  <a href="/periods" class="btn btn-secondary">Cancel</a>
+  <button class="btn btn-primary" id="create-btn" onclick="createPeriod()">
+    Create Period &amp; Set as Current
+  </button>
+</div>
+
+<script>
+// Pass date utils to client
+window.SECOND_MONDAYS = <%- JSON.stringify(secondMondays) %>;
+</script>
+
+<%- include('_foot') %>

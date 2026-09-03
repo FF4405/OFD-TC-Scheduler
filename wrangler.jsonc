@@ -1,0 +1,52 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	// Wraps the OpenNext-generated `.open-next/worker.js` (still built the
+	// same way by `cf:build`) to add a `scheduled` handler for the cron
+	// trigger below — see worker.ts's own comment for why this can't just
+	// point at the generated file directly.
+	"main": "worker.ts",
+	"name": "ofd-tc-scheduler",
+	"compatibility_date": "2026-08-12",
+	"compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+	// Fires hourly; the route handler (src/app/api/cron/remind/route.ts)
+	// checks the current hour/weekday in America/New_York against the
+	// notify_day/notify_hour settings row and only sends once that matches
+	// — this way admins can retime the reminder from the Settings page
+	// without a redeploy, the same flexibility the old Windows Task
+	// Scheduler version had.
+	"triggers": {
+		"crons": ["0 * * * *"]
+	},
+	"assets": {
+		"directory": ".open-next/assets",
+		"binding": "ASSETS"
+	},
+	// Non-secret config. Committed here (rather than left as Cloudflare
+	// dashboard "Text" vars) so `wrangler deploy` can't silently wipe them —
+	// a deploy treats this file as authoritative and overwrites/removes any
+	// dashboard-only vars not listed here. MAILGUN_API_KEY is an actual
+	// credential and stays out of the repo as a Secret (`wrangler secret
+	// put MAILGUN_API_KEY`), which deploys never touch.
+	"vars": {
+		"ALLOWED_EMAIL_DOMAINS": "oradellfire.org,oradell.org,oradelloem.org,wyndham.com",
+		"ADMIN_BOOTSTRAP_EMAILS": "jgothelf@oradellfire.org",
+		"MAILGUN_DOMAIN": "oradellfire.org",
+		"MAILGUN_FROM": "OFD TC Scheduler <no-reply@oradellfire.org>"
+	},
+	"services": [
+		{
+			// Self-reference service binding, the service name must match the worker name
+			// see https://opennext.js.org/cloudflare/caching
+			"binding": "WORKER_SELF_REFERENCE",
+			"service": "ofd-tc-scheduler"
+		}
+	],
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "ofd-tc-scheduler",
+			"database_id": "86a9928f-ea77-4340-a20c-62fe9c8ade46",
+			"migrations_dir": "migrations"
+		}
+	]
+}

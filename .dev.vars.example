@@ -1,0 +1,30 @@
+# Copy to .dev.vars (gitignored) for local development.
+# In production these are set with `wrangler secret put <NAME>`, not committed.
+
+# Comma-separated email domains allowed to sign in (request a one-time
+# code) at all — anything outside this list is rejected before a code is
+# ever sent. Leave empty only for local testing; always set this in
+# production.
+ALLOWED_EMAIL_DOMAINS=oradellfire.org
+
+# Comma-separated emails that get is_admin=true on their first sign-in
+# (bootstraps the first admin, since only an admin can promote others).
+# jgothelf@oradellfire.org is the intended first admin for this deployment —
+# it must also match ALLOWED_EMAIL_DOMAINS, or they won't be able to sign in
+# at all to trigger this bootstrap.
+ADMIN_BOOTSTRAP_EMAILS=jgothelf@oradellfire.org
+
+# Mailgun, used to send sign-in codes, access-request emails, and check
+# reminders. The domain must be verified in Mailgun (SPF/DKIM DNS records)
+# before it can send.
+MAILGUN_API_KEY=
+MAILGUN_DOMAIN=
+MAILGUN_FROM=OFD TC Scheduler <checks@yourdepartment.org>
+# Only needed for EU-region Mailgun accounts:
+# MAILGUN_API_BASE_URL=https://api.eu.mailgun.net
+
+# Shared secret the Cron Trigger's `scheduled` handler (worker.ts) sends
+# when it calls /api/cron/remind to send the Monday check reminder — the
+# route rejects any request without a matching header. Generate a random
+# value; set it in production with `wrangler secret put CRON_SECRET`.
+CRON_SECRET=

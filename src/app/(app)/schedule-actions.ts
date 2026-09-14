@@ -11,6 +11,7 @@ import { checkReminderEmail } from "@/lib/email/templates";
 import { sendEmail } from "@/lib/email/sender";
 import { isMailgunConfigured } from "@/lib/email/mailgun-client";
 import { getAppOrigin } from "@/lib/get-app-origin";
+import { DEMO_RECIPIENT_EMAIL, getSettings } from "@/lib/settings";
 
 export async function toggleCompletion(assignmentId: string, weekDate: string, undo: boolean): Promise<void> {
   const user = await getCurrentUser();
@@ -119,6 +120,8 @@ export async function sendReminders(
   const recipients = await loadRecipients(periodId, weekDate, target);
   const db = getDb();
   const origin = await getAppOrigin();
+  const settings = await getSettings(db);
+  const demoMode = settings.demo_mode === "1";
   const weekDateLabel = new Date(weekDate + "T00:00:00").toLocaleDateString("en-US", {
     month: "long",
     day: "numeric",
@@ -129,7 +132,11 @@ export async function sendReminders(
   let failed = 0;
 
   for (const r of recipients) {
-    if (!r.email) {
+    // In demo mode, redirect anyone with an actual assignment to the demo
+    // address instead of skipping them for having no email on file — the
+    // whole point is exercising the send flow without emailing real people.
+    const targetEmail = demoMode && r.memberId ? DEMO_RECIPIENT_EMAIL : r.email;
+    if (!targetEmail) {
       await db.insert(notificationLog).values({
         id: crypto.randomUUID(),
         memberId: r.memberId,
@@ -152,14 +159,16 @@ export async function sendReminders(
         weekDate,
         weekDateLabel,
         appUrl: origin,
+        demoRedirectNote:
+          demoMode && r.memberId ? `Demo mode — normally sent to ${r.name} <${r.email || "no email on file"}>` : undefined,
       });
-      await sendEmail({ to: [r.email], subject, html, text });
+      await sendEmail({ to: [targetEmail], subject, html, text });
       await db.insert(notificationLog).values({
         id: crypto.randomUUID(),
         memberId: r.memberId,
         assignmentId: r.assignmentId,
         weekDate,
-        recipient: r.email,
+        recipient: targetEmail,
         status: "sent",
         triggeredBy: "manual",
       });
@@ -170,7 +179,7 @@ export async function sendReminders(
         memberId: r.memberId,
         assignmentId: r.assignmentId,
         weekDate,
-        recipient: r.email,
+        recipient: targetEmail,
         status: "failed",
         errorMessage: err instanceof Error ? err.message : String(err),
         triggeredBy: "manual",

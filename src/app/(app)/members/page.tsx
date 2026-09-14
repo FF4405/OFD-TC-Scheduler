@@ -1,10 +1,10 @@
 import { redirect } from "next/navigation";
-import { asc, sql } from "drizzle-orm";
 
 import { getDb } from "@/db/client";
 import { users } from "@/db/schema";
 import { canManageRoster } from "@/lib/auth/permissions";
 import { getCurrentUser } from "@/lib/auth/session";
+import { sortByLineNumber } from "@/lib/members-sort";
 
 import { MembersTable, type MemberListItem } from "./members-table";
 
@@ -15,20 +15,12 @@ export default async function MembersPage() {
   if (!user) redirect("/login");
 
   const db = getDb();
-  const allMembers = await db
-    .select()
-    .from(users)
-    .orderBy(
-      sql`CASE WHEN ${users.lineNumber} IS NULL OR ${users.lineNumber} = '' THEN 1 ELSE 0 END`,
-      sql`CAST(${users.lineNumber} AS INTEGER)`,
-      asc(users.name),
-    );
+  const allMembers = sortByLineNumber(await db.select().from(users));
 
-  // Rotation queue rank (1 = next up) among active eligible members.
-  const rotationOrdered = allMembers
-    .filter((m) => m.rosterActive && m.rosterStatus !== "retired")
-    .slice()
-    .sort((a, b) => (a.rotationPosition ?? 999999) - (b.rotationPosition ?? 999999));
+  // Rotation queue rank (1 = next up) among active eligible members —
+  // always just their position in line-number order, so this column can
+  // never disagree with the Line # column next to it.
+  const rotationOrdered = allMembers.filter((m) => m.rosterActive && m.rosterStatus !== "retired");
   const rankMap = new Map(rotationOrdered.map((m, i) => [m.id, i + 1]));
 
   const members: MemberListItem[] = allMembers.map((m) => ({

@@ -48,10 +48,6 @@ export async function addMember(input: MemberInput): Promise<{ id: string }> {
     if (existing) throw new Error("A member with that email already exists.");
   }
 
-  const [{ maxPos }] = await db
-    .select({ maxPos: sql<number>`coalesce(max(${users.rotationPosition}), 0)` })
-    .from(users);
-
   const id = crypto.randomUUID();
   await db.insert(users).values({
     id,
@@ -61,9 +57,10 @@ export async function addMember(input: MemberInput): Promise<{ id: string }> {
     rosterStatus: input.rosterStatus,
     remarks: input.remarks.trim() || null,
     rosterActive: input.rosterActive,
-    rotationPosition: maxPos + 1,
     // Admin-added members are the trusted roster, same as the seeded one —
-    // active immediately, placeholder until they actually sign in.
+    // active immediately, placeholder until they actually sign in. Where
+    // they fall in the rotation is purely their line number — no separate
+    // queue position to set here.
     isActive: true,
     isPlaceholder: true,
   });

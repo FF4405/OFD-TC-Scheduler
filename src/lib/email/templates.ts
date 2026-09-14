@@ -95,14 +95,20 @@ export function checkReminderEmail(params: {
   weekDate: string;
   weekDateLabel: string;
   appUrl: string;
+  // Set when demo mode redirected this email away from its real
+  // recipient — describes who it would normally have gone to, and marks
+  // the subject so a test send is never mistaken for a real reminder.
+  demoRedirectNote?: string;
 }) {
-  const subject = `Reminder: ${params.apparatusName} ${params.slotType} Check Due by 7PM`;
+  const subject = `${params.demoRedirectNote ? "[DEMO] " : ""}Reminder: ${params.apparatusName} ${params.slotType} Check Due by 7PM`;
   const text = [
     `Hi ${params.memberName},`,
     "",
     `This is a reminder that your ${params.apparatusName} ${params.slotType} check is due by 7PM this Monday (${params.weekDateLabel}).`,
     "",
     "Please log your completion in First Due.",
+    "",
+    ...(params.demoRedirectNote ? ["", `[${params.demoRedirectNote}]`] : []),
     "",
     "Thank you,",
     "Oradell Fire Department",
@@ -111,6 +117,7 @@ export function checkReminderEmail(params: {
     <p style="margin:0 0 12px;">Hi ${escapeHtml(params.memberName)},</p>
     <p style="margin:0 0 16px;">This is a reminder that your <strong>${escapeHtml(params.apparatusName)} ${escapeHtml(params.slotType)}</strong> check is due by <strong>7PM this Monday</strong> (${escapeHtml(params.weekDateLabel)}).</p>
     <p style="margin:0 0 16px;">Please log your completion in First Due.</p>
+    ${params.demoRedirectNote ? `<p style="margin:0 0 16px;color:#71717a;font-size:12px;"><strong>${escapeHtml(params.demoRedirectNote)}</strong></p>` : ""}
     <p style="margin:0;">${button(params.appUrl, "View the schedule")}</p>
   `);
   return { subject, html, text };

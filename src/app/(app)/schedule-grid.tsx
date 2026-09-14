@@ -56,17 +56,22 @@ function Cell({ assignmentId, cell, canEdit }: { assignmentId: string; cell: Sch
       disabled={cell.isFuture || !canEdit || isPending}
       title={cell.completedBy ? `Completed by ${cell.completedBy}` : undefined}
       className={cn(
-        "flex h-14 w-full flex-col items-center justify-center gap-0.5 rounded-md border text-xs transition-colors",
+        "flex h-14 w-full flex-col items-center justify-center gap-1 rounded-md border text-xs",
         cell.isFuture
           ? "border-border/50 text-muted-foreground/50 cursor-not-allowed"
-          : done
-            ? "border-success bg-success/15 text-success-foreground hover:bg-success/25 cursor-pointer"
-            : "border-warning bg-warning/10 text-warning-foreground hover:bg-warning/20 cursor-pointer",
+          : "border-border bg-card hover:bg-accent/50 cursor-pointer",
         isPending && "opacity-50",
       )}
     >
       {cell.label ? <span className="font-medium">{cell.label}</span> : null}
-      {done ? <Check className="size-4" /> : null}
+      <span
+        className={cn(
+          "flex size-5 items-center justify-center rounded-sm border",
+          done ? "border-primary bg-primary text-primary-foreground" : "border-input",
+        )}
+      >
+        {done ? <Check className="size-3.5" /> : null}
+      </span>
     </button>
   );
 }

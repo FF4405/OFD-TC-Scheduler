@@ -6,7 +6,7 @@ import { getCurrentMondayDate } from "@/lib/dates";
 import { checkReminderEmail } from "@/lib/email/templates";
 import { sendEmail } from "@/lib/email/sender";
 import { isMailgunConfigured } from "@/lib/email/mailgun-client";
-import { getSettings } from "@/lib/settings";
+import { DEMO_RECIPIENT_EMAIL, getSettings } from "@/lib/settings";
 
 // Deliberately outside the (app) route group — hit by the Cloudflare Cron
 // Trigger (via worker.ts's `scheduled` handler self-fetching this route
@@ -40,6 +40,7 @@ export async function POST(request: Request) {
 
   const db = getDb();
   const settings = await getSettings(db);
+  const demoMode = settings.demo_mode === "1";
   const configuredDay = parseInt(settings.notify_day, 10);
   const configuredHour = parseInt(settings.notify_hour, 10);
   const { day, hour } = currentEasternDayAndHour();
@@ -113,7 +114,15 @@ export async function POST(request: Request) {
   let skipped = 0;
 
   for (const a of pending) {
-    if (!a.memberEmail || a.isPlaceholder) {
+    if (!a.memberId) {
+      skipped++; // unassigned slot — no one to remind
+      continue;
+    }
+    // In demo mode, redirect to the demo address even for a placeholder
+    // member with no real email — the point is exercising the send flow
+    // without emailing real people, not skipping for lack of an address.
+    const targetEmail = demoMode ? DEMO_RECIPIENT_EMAIL : a.isPlaceholder ? null : a.memberEmail;
+    if (!targetEmail) {
       skipped++;
       continue;
     }
@@ -125,14 +134,17 @@ export async function POST(request: Request) {
         weekDate,
         weekDateLabel,
         appUrl: origin,
+        demoRedirectNote: demoMode
+          ? `Demo mode — normally sent to ${a.memberName ?? "Firefighter"} <${a.memberEmail || "no email on file"}>`
+          : undefined,
       });
-      await sendEmail({ to: [a.memberEmail], subject, html, text });
+      await sendEmail({ to: [targetEmail], subject, html, text });
       await db.insert(notificationLog).values({
         id: crypto.randomUUID(),
         memberId: a.memberId,
         assignmentId: a.assignmentId,
         weekDate,
-        recipient: a.memberEmail,
+        recipient: targetEmail,
         status: "sent",
         triggeredBy: "cron",
       });
@@ -143,7 +155,7 @@ export async function POST(request: Request) {
         memberId: a.memberId,
         assignmentId: a.assignmentId,
         weekDate,
-        recipient: a.memberEmail,
+        recipient: targetEmail,
         status: "failed",
         errorMessage: err instanceof Error ? err.message : String(err),
         triggeredBy: "cron",

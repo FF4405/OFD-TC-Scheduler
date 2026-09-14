@@ -7,7 +7,19 @@ export const SETTINGS_DEFAULTS = {
   auto_schedule_months: "6",
   repeat_miss_num: "3",
   repeat_miss_den: "4",
+  // "1" redirects every reminder email (manual or cron) to
+  // DEMO_RECIPIENT_EMAIL instead of the real assignee — for testing the
+  // reminder flow without emailing actual members.
+  demo_mode: "0",
+  // Internal bookkeeping, not user-facing: the member id the auto-generate
+  // rotation last assigned, so the next run resumes right after them in
+  // the line-number cycle instead of restarting from the top. Empty means
+  // "start from the beginning of the roster."
+  rotation_cursor_member_id: "",
 } as const;
+
+// Where every reminder email goes when demo_mode is on.
+export const DEMO_RECIPIENT_EMAIL = "jgothelf@oradellfire.org";
 
 export type SettingsMap = Record<keyof typeof SETTINGS_DEFAULTS, string>;
 

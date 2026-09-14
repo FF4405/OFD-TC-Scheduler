@@ -1,14 +1,15 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import { getDb } from "@/db/client";
-import { assignmentSlots, periodAssignments, periods, users, weeklyCompletions } from "@/db/schema";
+import { assignmentSlots, periodAssignments, periods, settings as settingsTable, users, weeklyCompletions } from "@/db/schema";
 import { canManageSchedule } from "@/lib/auth/permissions";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getPeriodWeeks, upcomingSecondMondays } from "@/lib/dates";
-import { getAutoScheduleMonths, getRepeatSettings } from "@/lib/settings";
+import { sortByLineNumber } from "@/lib/members-sort";
+import { getAutoScheduleMonths, getRepeatSettings, getSettings } from "@/lib/settings";
 
 async function requireAdmin() {
   const user = await getCurrentUser();
@@ -80,14 +81,24 @@ export async function updatePeriodAssignments(
 
 export type AutoGenerateResult = { created: number; message?: string };
 
-// Ports the rotation/repeat/graduate logic from the pre-Cloudflare app's
-// POST /api/periods/auto-generate: fills in upcoming 2nd-Monday periods out
-// to the configured horizon, carrying a poor-attendance member's slot
-// forward (isRepeat) and pushing good-attendance members to the back of
-// the rotation queue, then filling everything else round-robin. Runs as
-// plain sequential queries rather than one big SQL statement — the roster
-// this operates on is small (a few dozen members, a handful of periods),
-// so there's no need to fight D1's query builder for this.
+// Fills in upcoming 2nd-Monday periods out to the configured horizon. The
+// base fill order is always the active roster's line-number order — no
+// separately-tracked queue position that can drift out of sync with it.
+// A single settings row (rotation_cursor_member_id) remembers only where
+// in that fixed cycle the last run left off, so the next run resumes
+// right after them, wrapping around at the end of the roster.
+//
+// A poor-attendance member's slot from the immediately preceding period
+// is *replaced* into the same slot for the next new period (isRepeat) —
+// carried in ahead of, and instead of, whoever the line-number cycle
+// would otherwise have placed there. There's no separate "graduate"
+// step: since the cycle always wraps back through everyone in the same
+// fixed order, good attendance just means no override, not an explicit
+// push to the back.
+//
+// Runs as plain sequential queries rather than one big SQL statement —
+// the roster this operates on is small (a few dozen members, a handful
+// of periods), so there's no need to fight D1's query builder for this.
 export async function autoGeneratePeriods(): Promise<AutoGenerateResult> {
   await requireAdmin();
   const db = getDb();
@@ -109,7 +120,7 @@ export async function autoGeneratePeriods(): Promise<AutoGenerateResult> {
   const allSlots = await db.select().from(assignmentSlots).orderBy(assignmentSlots.sortOrder);
 
   // Most recent period with any completion data, else just the most
-  // recent period overall — that's the source for repeat/graduate logic.
+  // recent period overall — that's the source for the repeat overlay.
   const sortedByDateDesc = existingPeriods.slice().sort((a, b) => (a.startDate < b.startDate ? 1 : -1));
   let source: (typeof existingPeriods)[number] | undefined;
   for (const p of sortedByDateDesc) {
@@ -126,49 +137,31 @@ export async function autoGeneratePeriods(): Promise<AutoGenerateResult> {
   }
   if (!source) source = sortedByDateDesc[0];
 
+  // slotId -> memberId to repeat into the very next new period, for
+  // anyone whose attendance on that slot fell below the threshold.
   const repeatSlotToMember = new Map<string, string>();
 
   if (source) {
     const srcAssignments = await db.select().from(periodAssignments).where(eq(periodAssignments.periodId, source.id));
     const srcWeekCount = getPeriodWeeks(source.startDate).length;
-    const graduatingIds: string[] = [];
 
     for (const a of srcAssignments) {
       if (!a.memberId) continue;
       const completions = await db.select().from(weeklyCompletions).where(eq(weeklyCompletions.assignmentId, a.id));
-      const completedCount = completions.length;
-      const missRate = srcWeekCount > 0 ? (srcWeekCount - completedCount) / srcWeekCount : 0;
-      if (missRate >= missThreshold) {
-        repeatSlotToMember.set(a.slotId, a.memberId);
-      } else if (completedCount > 0) {
-        graduatingIds.push(a.memberId);
-      }
-    }
-
-    if (graduatingIds.length > 0) {
-      const [{ maxPos }] = await db
-        .select({ maxPos: sql<number>`coalesce(max(${users.rotationPosition}), 0)` })
-        .from(users);
-      const allMembersForGrad = await db.select().from(users);
-      const grads = graduatingIds
-        .map((id) => allMembersForGrad.find((m) => m.id === id))
-        .filter((m): m is (typeof allMembersForGrad)[number] => Boolean(m))
-        .sort((a, b) => (a.rotationPosition ?? 999999) - (b.rotationPosition ?? 999999));
-      let pos = maxPos;
-      for (const m of grads) {
-        pos++;
-        await db.update(users).set({ rotationPosition: pos }).where(eq(users.id, m.id));
-      }
+      const missRate = srcWeekCount > 0 ? (srcWeekCount - completions.length) / srcWeekCount : 0;
+      if (missRate >= missThreshold) repeatSlotToMember.set(a.slotId, a.memberId);
     }
   }
 
-  const allMembersNow = await db.select().from(users);
-  const rotationIds = allMembersNow
-    .filter((m) => m.rosterActive && m.rosterStatus !== "retired")
-    .sort((a, b) => (a.rotationPosition ?? 999999) - (b.rotationPosition ?? 999999) || a.id.localeCompare(b.id))
-    .map((m) => m.id);
+  const eligibleMembers = sortByLineNumber(
+    (await db.select().from(users)).filter((m) => m.rosterActive && m.rosterStatus !== "retired"),
+  );
 
-  let rotationIndex = 0;
+  const s = await getSettings(db);
+  let cursorIndex = s.rotation_cursor_member_id
+    ? eligibleMembers.findIndex((m) => m.id === s.rotation_cursor_member_id)
+    : -1;
+
   let createdCount = 0;
 
   for (let pi = 0; pi < toCreate.length; pi++) {
@@ -181,6 +174,8 @@ export async function autoGeneratePeriods(): Promise<AutoGenerateResult> {
 
     const assignedInPeriod = new Set<string>();
 
+    // First: repeats replace whoever the line-number cycle would
+    // otherwise have picked for that slot — only for the very next period.
     if (pi === 0) {
       for (const slot of allSlots) {
         const memberId = repeatSlotToMember.get(slot.id);
@@ -197,32 +192,41 @@ export async function autoGeneratePeriods(): Promise<AutoGenerateResult> {
       }
     }
 
+    // Then: fill every other slot by advancing through the fixed
+    // line-number cycle, skipping anyone already placed this period
+    // (by a repeat above, or an earlier slot in this same pass).
     for (const slot of allSlots) {
       if (pi === 0 && repeatSlotToMember.has(slot.id)) continue;
 
+      let memberId: string | null = null;
       let tries = 0;
-      while (
-        rotationIds.length > 0 &&
-        tries < rotationIds.length &&
-        assignedInPeriod.has(rotationIds[rotationIndex % rotationIds.length])
-      ) {
-        rotationIndex++;
+      while (eligibleMembers.length > 0 && tries < eligibleMembers.length) {
+        cursorIndex = (cursorIndex + 1) % eligibleMembers.length;
         tries++;
+        const candidate = eligibleMembers[cursorIndex];
+        if (!assignedInPeriod.has(candidate.id)) {
+          memberId = candidate.id;
+          break;
+        }
       }
-
-      const memberId = rotationIds.length > 0 ? rotationIds[rotationIndex % rotationIds.length] : null;
-      if (memberId) {
-        assignedInPeriod.add(memberId);
-        rotationIndex++;
-      }
+      if (memberId) assignedInPeriod.add(memberId);
       await db.insert(periodAssignments).values({ id: crypto.randomUUID(), periodId, slotId: slot.id, memberId });
     }
 
     createdCount++;
   }
 
+  if (cursorIndex >= 0) {
+    const cursorMemberId = eligibleMembers[cursorIndex].id;
+    await db
+      .insert(settingsTable)
+      .values({ key: "rotation_cursor_member_id", value: cursorMemberId })
+      .onConflictDoUpdate({ target: settingsTable.key, set: { value: cursorMemberId } });
+  }
+
   revalidatePath("/periods");
   revalidatePath("/settings");
+  revalidatePath("/members");
   revalidatePath("/");
   return { created: createdCount };
 }

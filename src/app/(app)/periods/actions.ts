@@ -92,7 +92,18 @@ export async function autoGeneratePeriods(): Promise<AutoGenerateResult> {
 // for when the roster changed after the period was generated. Refuses
 // (via recalculatePeriodAssignments) if the period already has logged
 // completions.
-export async function recalculatePeriod(periodId: string): Promise<void> {
-  await requireAdmin();
-  await recalculatePeriodAssignments(periodId);
+//
+// Returns a plain result instead of throwing: Next.js redacts a thrown
+// Server Action error's message in production the same way it redacts a
+// Server Component render error, so a thrown "already has completions"
+// message would reach the client as an opaque digest-only error instead
+// of the actual reason.
+export async function recalculatePeriod(periodId: string): Promise<{ error?: string }> {
+  try {
+    await requireAdmin();
+    await recalculatePeriodAssignments(periodId);
+    return {};
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Failed to recalculate." };
+  }
 }

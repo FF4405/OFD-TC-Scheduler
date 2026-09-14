@@ -78,12 +78,9 @@ export function PeriodDetailForm({
       return;
     setRecalcError(null);
     startRecalcTransition(async () => {
-      try {
-        await recalculatePeriod(periodId);
-        router.refresh();
-      } catch (err) {
-        setRecalcError(err instanceof Error ? err.message : "Failed to recalculate.");
-      }
+      const result = await recalculatePeriod(periodId);
+      if (result.error) setRecalcError(result.error);
+      else router.refresh();
     });
   }
 

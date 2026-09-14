@@ -58,6 +58,7 @@ export default async function PeriodDetailPage({ params }: { params: Promise<{ i
         </CardHeader>
         <CardContent>
           <PeriodDetailForm
+            key={JSON.stringify(initialAssignments)}
             periodId={period.id}
             periodName={period.name}
             isCurrentInitial={period.isCurrent}

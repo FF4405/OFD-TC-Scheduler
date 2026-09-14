@@ -1,5 +1,5 @@
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 
 import { getDb } from "@/db/client";
 import { assignmentSlots, periodAssignments, periods, settings as settingsTable, users, weeklyCompletions } from "@/db/schema";
@@ -166,4 +166,79 @@ export async function runAutoGeneratePeriods(): Promise<AutoGenerateResult> {
   revalidatePath("/members");
   revalidatePath("/");
   return { created: createdCount };
+}
+
+// Re-fills one already-created period from scratch, using the same
+// line-number cycle as auto-generation but with no repeat overlay — a
+// repeat is only ever meaningful when it's computed from the real
+// attendance of the period immediately before it, which doesn't apply to
+// re-running an arbitrary existing period on demand. Refuses to touch a
+// period that already has logged completions, since replacing its
+// assignments would cascade-delete that history.
+export async function recalculatePeriodAssignments(periodId: string): Promise<void> {
+  const db = getDb();
+
+  const [period] = await db.select().from(periods).where(eq(periods.id, periodId)).limit(1);
+  if (!period) throw new Error("Period not found.");
+
+  const existingAssignments = await db.select().from(periodAssignments).where(eq(periodAssignments.periodId, periodId));
+  const assignmentIds = existingAssignments.map((a) => a.id);
+  if (assignmentIds.length > 0) {
+    const [hasCompletion] = await db
+      .select({ id: weeklyCompletions.id })
+      .from(weeklyCompletions)
+      .where(inArray(weeklyCompletions.assignmentId, assignmentIds))
+      .limit(1);
+    if (hasCompletion) {
+      throw new Error("This period already has logged completions, so it can't be recalculated.");
+    }
+  }
+
+  const allSlots = await db.select().from(assignmentSlots).orderBy(assignmentSlots.sortOrder);
+  const eligibleMembers = sortByLineNumber(
+    (await db.select().from(users)).filter((m) => m.rosterActive && m.rosterStatus !== "retired"),
+  );
+
+  const s = await getSettings(db);
+  let cursorIndex = s.rotation_cursor_member_id
+    ? eligibleMembers.findIndex((m) => m.id === s.rotation_cursor_member_id)
+    : -1;
+
+  const assignedInPeriod = new Set<string>();
+
+  for (const slot of allSlots) {
+    let memberId: string | null = null;
+    let tries = 0;
+    while (eligibleMembers.length > 0 && tries < eligibleMembers.length) {
+      cursorIndex = (cursorIndex + 1) % eligibleMembers.length;
+      tries++;
+      const candidate = eligibleMembers[cursorIndex];
+      if (!assignedInPeriod.has(candidate.id)) {
+        memberId = candidate.id;
+        break;
+      }
+    }
+    if (memberId) assignedInPeriod.add(memberId);
+    await db
+      .insert(periodAssignments)
+      .values({ id: crypto.randomUUID(), periodId, slotId: slot.id, memberId, isRepeat: false })
+      .onConflictDoUpdate({
+        target: [periodAssignments.periodId, periodAssignments.slotId],
+        set: { memberId, isRepeat: false },
+      });
+  }
+
+  if (cursorIndex >= 0) {
+    const cursorMemberId = eligibleMembers[cursorIndex].id;
+    await db
+      .insert(settingsTable)
+      .values({ key: "rotation_cursor_member_id", value: cursorMemberId })
+      .onConflictDoUpdate({ target: settingsTable.key, set: { value: cursorMemberId } });
+  }
+
+  revalidatePath("/periods");
+  revalidatePath(`/periods/${periodId}`);
+  revalidatePath("/settings");
+  revalidatePath("/members");
+  revalidatePath("/");
 }

@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { AlertTriangle, Check } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { AlertTriangle, Check, RefreshCw } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-import { updatePeriodAssignments } from "../actions";
+import { recalculatePeriod, updatePeriodAssignments } from "../actions";
 
 type Slot = { id: string; apparatusName: string; slotType: string; oicName: string | null; isRepeat: boolean };
 type Member = { id: string; name: string; lineNumber: string | null };
@@ -31,6 +32,7 @@ export function PeriodDetailForm({
   members: Member[];
   initialAssignments: Record<string, string | null>;
 }) {
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [name, setName] = useState(periodName);
   const [isCurrent, setIsCurrent] = useState(isCurrentInitial);
@@ -39,6 +41,9 @@ export function PeriodDetailForm({
   );
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [isRecalculating, startRecalcTransition] = useTransition();
+  const [recalcError, setRecalcError] = useState<string | null>(null);
 
   const unassignedCount = useMemo(
     () => oicGroups.flatMap((g) => g.slots).filter((s) => !assignments[s.id]).length,
@@ -64,6 +69,24 @@ export function PeriodDetailForm({
     });
   }
 
+  function recalculate() {
+    if (
+      !window.confirm(
+        "Recalculate this period from the rotation? This will overwrite every assignment below with the next people in line.",
+      )
+    )
+      return;
+    setRecalcError(null);
+    startRecalcTransition(async () => {
+      try {
+        await recalculatePeriod(periodId);
+        router.refresh();
+      } catch (err) {
+        setRecalcError(err instanceof Error ? err.message : "Failed to recalculate.");
+      }
+    });
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end gap-4">
@@ -75,7 +98,13 @@ export function PeriodDetailForm({
           <Checkbox checked={isCurrent} onChange={(e) => setIsCurrent(e.target.checked)} />
           Current period
         </Label>
+        <Button type="button" variant="outline" size="sm" onClick={recalculate} disabled={isRecalculating}>
+          <RefreshCw className={isRecalculating ? "animate-spin" : undefined} />
+          {isRecalculating ? "Recalculating…" : "Recalculate from rotation"}
+        </Button>
       </div>
+
+      {recalcError ? <p className="text-destructive text-sm">{recalcError}</p> : null}
 
       {unassignedCount > 0 ? (
         <div className="text-warning-foreground bg-warning/20 flex items-center gap-2 rounded-md px-3 py-2 text-sm">

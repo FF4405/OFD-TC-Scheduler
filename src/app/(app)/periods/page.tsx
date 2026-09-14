@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { desc, eq, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { canManageSchedule } from "@/lib/auth/permissions";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getPeriodEndDate } from "@/lib/dates";
 import { fmtShortDate } from "@/lib/format-date";
+import { sortPeriodsCurrentFirst } from "@/lib/periods-sort";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,7 @@ export default async function PeriodsPage() {
   if (!user) redirect("/login");
 
   const db = getDb();
-  const allPeriods = await db.select().from(periods).orderBy(desc(periods.startDate));
+  const allPeriods = sortPeriodsCurrentFirst(await db.select().from(periods));
 
   const counts = await db
     .select({

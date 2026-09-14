@@ -8,6 +8,7 @@ import { assignmentSlots, notificationLog, periodAssignments, periods, users, we
 import { getCurrentUser } from "@/lib/auth/session";
 import { getPeriodWeeks } from "@/lib/dates";
 import { fmtDateTime, fmtShortDate } from "@/lib/format-date";
+import { sortPeriodsCurrentFirst } from "@/lib/periods-sort";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -29,12 +30,13 @@ export default async function MemberDetailPage({ params }: { params: Promise<{ i
   const [member] = await db.select().from(users).where(eq(users.id, id)).limit(1);
   if (!member) notFound();
 
-  const assignments = await db
+  const assignmentsRaw = await db
     .select({
       assignmentId: periodAssignments.id,
       periodId: periods.id,
       periodName: periods.name,
       startDate: periods.startDate,
+      isCurrent: periods.isCurrent,
       weekCount: periods.weekCount,
       apparatusName: assignmentSlots.apparatusName,
       slotType: assignmentSlots.slotType,
@@ -43,8 +45,8 @@ export default async function MemberDetailPage({ params }: { params: Promise<{ i
     .from(periodAssignments)
     .innerJoin(periods, eq(periods.id, periodAssignments.periodId))
     .innerJoin(assignmentSlots, eq(assignmentSlots.id, periodAssignments.slotId))
-    .where(eq(periodAssignments.memberId, id))
-    .orderBy(desc(periods.startDate));
+    .where(eq(periodAssignments.memberId, id));
+  const assignments = sortPeriodsCurrentFirst(assignmentsRaw);
 
   const today = new Date().toISOString().split("T")[0];
 

@@ -9,6 +9,7 @@ import { canMarkCompletion, isAdmin } from "@/lib/auth/permissions";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getPeriodWeeks } from "@/lib/dates";
 import { sortPeriodsCurrentFirst } from "@/lib/periods-sort";
+import { getSettings } from "@/lib/settings";
 
 import { PeriodSelect } from "./period-select";
 import { ScheduleGrid, type OicGroup, type ScheduleRow } from "./schedule-grid";
@@ -71,6 +72,8 @@ export default async function SchedulePage({
       : [];
   const completionMap = new Map(completions.map((c) => [`${c.assignmentId}:${c.weekDate}`, c]));
 
+  const settings = await getSettings(db);
+  const demoMode = settings.demo_mode === "1";
   const today = new Date().toISOString().split("T")[0];
 
   const rows: ScheduleRow[] = assignments.map((a) => {
@@ -83,7 +86,10 @@ export default async function SchedulePage({
         label,
         done: Boolean(completion),
         completedBy: completion?.completedBy ?? null,
-        isFuture: weekDate > today,
+        // Demo mode unlocks every week for check-off, including future
+        // ones — the point is exercising the toggle flow without waiting
+        // for real weeks to arrive.
+        isFuture: !demoMode && weekDate > today,
       };
     });
     return {

@@ -101,6 +101,10 @@ configured reminder day/hour (`/settings`, in America/New_York time) and only ac
 once that matches — so admins can retime the weekly reminder from the Settings page without a
 redeploy, and it fires at most once per week (see `src/app/api/cron/remind/route.ts`).
 
+Registering this cron trigger requires a Workers **Paid** plan on the Cloudflare account —
+Workers Free caps an account at 5 cron triggers total, shared across every Worker on the
+account, and this one would have been the 6th alongside the department's other automations.
+
 ## Tests
 
 ```bash

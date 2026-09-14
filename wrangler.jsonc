@@ -5,7 +5,7 @@
 	// trigger below — see worker.ts's own comment for why this can't just
 	// point at the generated file directly.
 	"main": "worker.ts",
-	"name": "ofd-tc-scheduler",
+	"name": "ofd-tc-scheduler-worker",
 	"compatibility_date": "2026-08-12",
 	"compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
 	// Fires hourly; the route handler (src/app/api/cron/remind/route.ts)
@@ -38,7 +38,7 @@
 			// Self-reference service binding, the service name must match the worker name
 			// see https://opennext.js.org/cloudflare/caching
 			"binding": "WORKER_SELF_REFERENCE",
-			"service": "ofd-tc-scheduler"
+			"service": "ofd-tc-scheduler-worker"
 		}
 	],
 	"d1_databases": [

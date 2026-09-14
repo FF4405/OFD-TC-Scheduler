@@ -4,10 +4,11 @@ import { useState, useTransition } from "react";
 import { Check } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type { SettingsMap } from "@/lib/settings";
+import { DEMO_RECIPIENT_EMAIL, type SettingsMap } from "@/lib/settings";
 
 import { updateSettings } from "./actions";
 import { autoGeneratePeriods } from "../periods/actions";
@@ -120,6 +121,21 @@ export function SettingsForm({ initial }: { initial: SettingsMap }) {
             />
           </div>
         </div>
+      </div>
+
+      <div className="bg-warning/10 border-warning/40 flex flex-col gap-2 rounded-md border p-3">
+        <Label className="flex items-center gap-2">
+          <Checkbox
+            checked={values.demo_mode === "1"}
+            onChange={(e) => setValues({ ...values, demo_mode: e.target.checked ? "1" : "0" })}
+          />
+          Demo mode
+        </Label>
+        <p className="text-muted-foreground text-xs">
+          Redirects every reminder email (manual send or the automated cron) to{" "}
+          <span className="font-medium">{DEMO_RECIPIENT_EMAIL}</span> instead of the real assignee — for testing
+          without emailing actual members. Remember to turn this off before relying on real reminders again.
+        </p>
       </div>
 
       {error ? <p className="text-destructive text-sm">{error}</p> : null}

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import { getDb } from "@/db/client";
 import { accessRequests, users } from "@/db/schema";
@@ -39,19 +39,12 @@ export async function approveAccessRequest(requestId: string): Promise<void> {
   const reviewer = await requireReviewer();
 
   const db = getDb();
-  // Approving grants sign-in access and puts them in the rotation queue
-  // (at the back, if they aren't already placed).
-  const [{ maxPos }] = await db
-    .select({ maxPos: sql<number>`coalesce(max(${users.rotationPosition}), 0)` })
-    .from(users);
+  // Approving grants sign-in access and puts them in the rotation — which
+  // is purely line-number order, so there's no separate queue position to
+  // set here.
   await db
     .update(users)
-    .set({
-      isActive: true,
-      rosterActive: true,
-      rotationPosition: requester.rotationPosition ?? maxPos + 1,
-      updatedAt: new Date(),
-    })
+    .set({ isActive: true, rosterActive: true, updatedAt: new Date() })
     .where(eq(users.id, request.userId));
 
   await db

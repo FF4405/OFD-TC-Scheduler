@@ -7,6 +7,7 @@ import { assignmentSlots, periodAssignments, periods, users } from "@/db/schema"
 import { canManageSchedule } from "@/lib/auth/permissions";
 import { getCurrentUser } from "@/lib/auth/session";
 import { upcomingSecondMondays } from "@/lib/dates";
+import { sortByLineNumber } from "@/lib/members-sort";
 
 import { NewPeriodForm } from "./new-period-form";
 
@@ -19,14 +20,9 @@ export default async function NewPeriodPage() {
 
   const db = getDb();
   const slots = await db.select().from(assignmentSlots).orderBy(assignmentSlots.sortOrder);
-  const eligibleMembers = (await db.select().from(users))
-    .filter((m) => m.rosterActive && m.rosterStatus !== "retired")
-    .sort((a, b) => {
-      const an = a.lineNumber ? parseInt(a.lineNumber, 10) : Infinity;
-      const bn = b.lineNumber ? parseInt(b.lineNumber, 10) : Infinity;
-      return an - bn || a.name.localeCompare(b.name);
-    })
-    .map((m) => ({ id: m.id, name: m.name, lineNumber: m.lineNumber }));
+  const eligibleMembers = sortByLineNumber(
+    (await db.select().from(users)).filter((m) => m.rosterActive && m.rosterStatus !== "retired"),
+  ).map((m) => ({ id: m.id, name: m.name, lineNumber: m.lineNumber }));
 
   const secondMondays = upcomingSecondMondays(8);
 

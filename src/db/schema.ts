@@ -24,9 +24,6 @@ export const users = sqliteTable("users", {
   // (below), which gates *app sign-in* access. A retired member can still
   // sign in read-only without ever showing up in the rotation queue.
   rosterActive: integer("roster_active", { mode: "boolean" }).notNull().default(true),
-  // Position in the round-robin assignment queue (lower = assigned sooner).
-  // Null until first placed — see lib/schedule/rotation.ts.
-  rotationPosition: integer("rotation_position"),
   isAdmin: integer("is_admin", { mode: "boolean" }).notNull().default(false),
   isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
   // True for accounts seeded from the existing roster with no real sign-in

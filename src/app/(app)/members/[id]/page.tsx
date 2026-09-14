@@ -138,10 +138,10 @@ export default async function MemberDetailPage({ params }: { params: Promise<{ i
                         title={d.date}
                         className={cn(
                           "size-3 rounded-full border",
-                          d.future
-                            ? "border-border bg-transparent"
-                            : d.done
-                              ? "border-success bg-success"
+                          d.done
+                            ? "border-success bg-success"
+                            : d.future
+                              ? "border-border bg-transparent"
                               : "border-warning bg-warning",
                         )}
                       />

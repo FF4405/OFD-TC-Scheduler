@@ -1,5 +1,15 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
+	// Cloudflare Workers Build (Workers & Pages → ofd-tc-scheduler-worker →
+	// Settings → Build) MUST have its Build command set to `npm run
+	// cf:build`, not `npm run build`. `npm run build` is plain `next
+	// build` — it never runs the OpenNext bundler, so it never produces
+	// `.open-next/worker.js`, which is what `main` below (via worker.ts)
+	// requires. Getting this wrong is exactly what broke the first two
+	// deploys: the build step "succeeded" doing nothing useful, then the
+	// Deploy command (`npx wrangler deploy`) failed with "Could not find
+	// compiled Open Next config, did you run the build command?".
+	//
 	// Wraps the OpenNext-generated `.open-next/worker.js` (still built the
 	// same way by `cf:build`) to add a `scheduled` handler for the cron
 	// trigger below — see worker.ts's own comment for why this can't just
@@ -45,7 +55,7 @@
 	// credential and stays out of the repo as a Secret (`wrangler secret
 	// put MAILGUN_API_KEY`), which deploys never touch.
 	"vars": {
-		"ALLOWED_EMAIL_DOMAINS": "oradellfire.org,oradell.org,oradelloem.org,wyndham.com",
+		"ALLOWED_EMAIL_DOMAINS": "oradellfire.org",
 		"ADMIN_BOOTSTRAP_EMAILS": "jgothelf@oradellfire.org",
 		"MAILGUN_DOMAIN": "oradellfire.org",
 		"MAILGUN_FROM": "OFD TC Scheduler <no-reply@oradellfire.org>"

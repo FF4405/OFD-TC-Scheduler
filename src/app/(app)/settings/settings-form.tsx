@@ -154,19 +154,22 @@ export function SettingsForm({ initial }: { initial: SettingsMap }) {
 
       <div className="border-t pt-4">
         <p className="text-muted-foreground mb-2 text-sm">
-          Fill in periods out to the configured horizon, carrying poor-attendance members forward and
-          rotating everyone else.
+          Periods out to the configured horizon are generated automatically every day — carrying
+          poor-attendance members forward and rotating everyone else — so there&apos;s normally nothing to
+          click here. Use this only to force a regeneration right now instead of waiting for the next
+          automatic run (e.g. right after fixing the roster).
         </p>
         <Button variant="outline" onClick={generate} disabled={isGenerating}>
-          {isGenerating ? "Generating…" : "Auto-generate periods"}
+          {isGenerating ? "Generating…" : "Regenerate periods now"}
         </Button>
         {genMessage ? <p className="text-muted-foreground mt-2 text-sm">{genMessage}</p> : null}
       </div>
 
       <div className="text-muted-foreground border-t pt-4 text-xs">
-        Monday reminders send automatically via a Cloudflare Cron Trigger — no external cron job or URL
-        needed. The reminder day/hour above controls when the cron actually sends (it fires hourly and
-        checks these settings); see the deployed worker&apos;s <code>scheduled</code> handler for details.
+        Monday reminders and period auto-generation both run automatically via a Cloudflare Cron Trigger
+        — no external cron job or URL needed. The reminder day/hour above controls when the cron actually
+        sends (it fires hourly and checks these settings); period generation checks once a day and no-ops
+        the rest of the time. See the deployed worker&apos;s <code>scheduled</code> handler for details.
       </div>
     </div>
   );

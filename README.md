@@ -4,8 +4,8 @@ Schedules the truck company's weekly apparatus & equipment checks, tracks who's 
 theirs, and reminds whoever hasn't by email.
 
 Firefighters sign in with their email (a one-time code, no password), see the schedule grid,
-and mark their own check complete. An admin manages the roster, the check slots, and
-scheduling periods, and can auto-generate upcoming periods from a round-robin rotation.
+and mark their own check complete. Upcoming scheduling periods generate themselves
+automatically from a round-robin rotation; an admin manages the roster and the check slots.
 
 ## Stack
 
@@ -41,8 +41,9 @@ npx wrangler d1 execute ofd-tc-scheduler --remote --file=./migrations/<file>.sql
 `db/seed.sql` seeds the truck company roster and the eight apparatus/equipment check slots the
 same way (`--local`/`--remote`). Members are seeded as placeholders (already-trusted, no login
 yet) — each one's first real sign-in with a matching email claims their row, keeping their
-history. No demo scheduling period is seeded; create the first one from `/periods/new` or the
-"Auto-generate periods" button on `/settings` after deploying.
+history. No demo scheduling period is seeded — the daily cron creates the first ones
+automatically once deployed, or trigger it immediately from `/settings` → "Regenerate periods
+now" instead of waiting for the next automatic run.
 
 ## Auth & email setup
 
@@ -86,20 +87,28 @@ status, remarks) are edited from a member's profile under `/members`.
   check, with an OIC label and optional weekly rotation labels (e.g. "Officer"/"Driver"
   alternating).
 - **Periods** (`/periods`, admin to create/edit) — a period runs from one 2nd-Monday-of-the-
-  month to the next. `/periods/new` builds one manually, pre-populated from the current
-  period's assignments; `/settings` → "Auto-generate periods" fills in upcoming periods
-  automatically, carrying a poor-attendance member's slot forward and rotating everyone else
-  from the queue.
+  month to the next. New periods out to the configured horizon (`/settings`, default 6 months)
+  are generated automatically every day — nobody needs to create them by hand. `/periods/new`
+  is still there for a manual one-off, pre-populated from the current period's assignments, and
+  `/settings` → "Regenerate periods now" forces an immediate run instead of waiting for the
+  next automatic one.
 - **Schedule** (`/`) — the grid itself. Any active member can click a week's cell to mark their
   check complete or undo it; an admin (or anyone, via the "Remind pending" button) can preview
   and send a reminder email for the current week.
 
-## Reminders
+## Automatic scheduling and reminders
 
-A Cloudflare Cron Trigger fires the Worker's `scheduled` handler hourly; it checks the
-configured reminder day/hour (`/settings`, in America/New_York time) and only actually sends
-once that matches — so admins can retime the weekly reminder from the Settings page without a
-redeploy, and it fires at most once per week (see `src/app/api/cron/remind/route.ts`).
+A single Cloudflare Cron Trigger fires the Worker's `scheduled` handler hourly, which in turn
+hits two routes (`src/app/api/cron/remind/route.ts` and
+`src/app/api/cron/auto-generate-periods/route.ts`) — each gates itself so most of those hourly
+calls no-op quickly:
+
+- **Reminders** check the configured reminder day/hour (`/settings`, in America/New_York time)
+  and only actually send once that matches — so admins can retime the weekly reminder without a
+  redeploy — and fire at most once per week.
+- **Period auto-generation** runs once a day (whichever hour the America/New_York date first
+  rolls over to a new day), topping up the scheduling horizon so it always looks ~6 months
+  ahead without anyone clicking anything.
 
 Registering this cron trigger requires a Workers **Paid** plan on the Cloudflare account —
 Workers Free caps an account at 5 cron triggers total, shared across every Worker on the
@@ -148,14 +157,15 @@ Before the first deploy (already done for this account, documented here for refe
 Ported from the original Express/EJS/SQLite version of this app (which couldn't run on
 Cloudflare — `better-sqlite3` is a native binary) onto the same stack and visual theme as
 [OFD Driver Training](https://github.com/FF4405/ofd-driver-training): D1 + Drizzle, built-in
-OTP auth, Tailwind theme, Cloudflare Cron Trigger for reminders. All original functionality is
-carried over: schedule grid with click-to-complete, member roster with rotation queue, slot and
-period management, auto-generated rotation with repeat/graduate logic, manual and automated
-email reminders, and per-member assignment/notification history.
+OTP auth, Tailwind theme, Cloudflare Cron Triggers for reminders and period auto-generation.
+All original functionality is carried over: schedule grid with click-to-complete, member roster
+with rotation queue, slot and period management, automatically-generated rotation with
+repeat-on-poor-attendance logic, manual and automated email reminders, and per-member
+assignment/notification history.
 
 Remaining before day-to-day use:
 
 - Deploy: `npm run cf:deploy` (see "Cloudflare Workers build/preview/deploy" above).
 - Seed the roster and slots on the remote database (`db/seed.sql`, `--remote`).
-- Create the first scheduling period from `/periods/new`, or set a rotation via
-  `/settings` → "Auto-generate periods".
+- Periods generate themselves automatically from there (daily cron); use `/settings` →
+  "Regenerate periods now" if you don't want to wait for the first automatic run.

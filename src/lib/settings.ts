@@ -16,6 +16,12 @@ export const SETTINGS_DEFAULTS = {
   // the line-number cycle instead of restarting from the top. Empty means
   // "start from the beginning of the roster."
   rotation_cursor_member_id: "",
+  // Internal bookkeeping, not user-facing: the America/New_York date
+  // (YYYY-MM-DD) auto-generate last actually ran on, via the daily cron —
+  // see src/app/api/cron/auto-generate-periods/route.ts. Keeps that route
+  // a once-a-day no-op the rest of the time despite firing on the same
+  // hourly trigger as the reminder cron.
+  auto_generate_last_run_date: "",
 } as const;
 
 // Where every reminder email goes when demo_mode is on.

@@ -7,7 +7,7 @@ import { getDb } from "@/db/client";
 import { periodAssignments, periods } from "@/db/schema";
 import { canManageSchedule } from "@/lib/auth/permissions";
 import { getCurrentUser } from "@/lib/auth/session";
-import { runAutoGeneratePeriods, type AutoGenerateResult } from "@/lib/rotation";
+import { recalculatePeriodAssignments, runAutoGeneratePeriods, type AutoGenerateResult } from "@/lib/rotation";
 
 async function requireAdmin() {
   const user = await getCurrentUser();
@@ -86,4 +86,13 @@ export type { AutoGenerateResult };
 export async function autoGeneratePeriods(): Promise<AutoGenerateResult> {
   await requireAdmin();
   return runAutoGeneratePeriods();
+}
+
+// Re-fills one existing period's assignments from the rotation cycle,
+// for when the roster changed after the period was generated. Refuses
+// (via recalculatePeriodAssignments) if the period already has logged
+// completions.
+export async function recalculatePeriod(periodId: string): Promise<void> {
+  await requireAdmin();
+  await recalculatePeriodAssignments(periodId);
 }

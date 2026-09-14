@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { desc, eq, inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 
 import { Button } from "@/components/ui/button";
 import { getDb } from "@/db/client";
@@ -8,6 +8,7 @@ import { assignmentSlots, periodAssignments, periods, users, weeklyCompletions }
 import { canMarkCompletion, isAdmin } from "@/lib/auth/permissions";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getPeriodWeeks } from "@/lib/dates";
+import { sortPeriodsCurrentFirst } from "@/lib/periods-sort";
 
 import { PeriodSelect } from "./period-select";
 import { ScheduleGrid, type OicGroup, type ScheduleRow } from "./schedule-grid";
@@ -24,7 +25,7 @@ export default async function SchedulePage({
 
   const { period: periodParam } = await searchParams;
   const db = getDb();
-  const allPeriods = await db.select().from(periods).orderBy(desc(periods.startDate));
+  const allPeriods = sortPeriodsCurrentFirst(await db.select().from(periods));
 
   const period = periodParam
     ? allPeriods.find((p) => p.id === periodParam)

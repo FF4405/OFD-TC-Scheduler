@@ -8,6 +8,23 @@
 	"name": "ofd-tc-scheduler-worker",
 	"compatibility_date": "2026-08-12",
 	"compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+	// The app is only reachable at the custom domain below — the default
+	// *.workers.dev URL stays disabled.
+	"workers_dev": false,
+	"routes": [{ "pattern": "checks.oradellfire.org", "custom_domain": true }],
+	"observability": {
+		"logs": {
+			"enabled": true,
+			"head_sampling_rate": 1,
+			"invocation_logs": true,
+			"persist": true
+		},
+		"traces": {
+			"enabled": false,
+			"head_sampling_rate": 1,
+			"persist": true
+		}
+	},
 	// Fires hourly; the route handler (src/app/api/cron/remind/route.ts)
 	// checks the current hour/weekday in America/New_York against the
 	// notify_day/notify_hour settings row and only sends once that matches

@@ -116,16 +116,28 @@ npm run cf:deploy     # build + deploy to Cloudflare (requires `wrangler login` 
 npm run cf:typegen    # regenerate cloudflare-env.d.ts from wrangler.jsonc bindings
 ```
 
-The `ofd-tc-scheduler` D1 database and Worker are already provisioned in the Cloudflare
-account; `wrangler.jsonc` points at that database. Before the first deploy:
+The `ofd-tc-scheduler-worker` Worker and its `ofd-tc-scheduler` D1 database are provisioned
+in the Cloudflare account. The app deploys via **Cloudflare Workers Build** — a Git-connected
+CI that builds and deploys automatically on push to `main`:
 
-1. `wrangler login` (or set `CLOUDFLARE_API_TOKEN`).
-2. `wrangler secret put MAILGUN_API_KEY` and `wrangler secret put CRON_SECRET`.
-3. Apply migrations and seed data to the remote database (`--remote`, see "Database" above).
-4. `npm run cf:deploy`.
-5. Update `next.config.ts`'s `experimental.serverActions.allowedOrigins` and
-   `wrangler.jsonc`'s `vars` (email domains, admin bootstrap email, Mailgun domain/from) for
-   the actual deployed domain before going live.
+- **Build command**: `npm run cf:build` (must be this, not `npm run build` — see below)
+- **Deploy command**: `npx wrangler deploy`
+- **Root directory**: `/`
+
+`npm run cf:build` runs the full OpenNext bundle (`.open-next/worker.js`), which
+`npx wrangler deploy` then picks up. Setting the Build command to plain `npm run build`
+instead breaks the deploy step — it only runs `next build`, never producing `.open-next`, so
+`wrangler deploy` fails with "Could not find compiled Open Next config."
+
+Served at the custom domain `checks.oradellfire.org` (see `wrangler.jsonc`'s `routes`); the
+default `*.workers.dev` URL is disabled.
+
+Before the first deploy (already done for this account, documented here for reference):
+
+1. `wrangler secret put MAILGUN_API_KEY` and `wrangler secret put CRON_SECRET`.
+2. Apply migrations and seed data to the remote database (`--remote`, see "Database" above).
+3. Push to `main` (Workers Build deploys automatically), or run `npm run cf:deploy` manually
+   (requires `wrangler login` or a `CLOUDFLARE_API_TOKEN`).
 
 ## Project status
 

@@ -14,7 +14,7 @@ const nextConfig: NextConfig = {
       // guard that needs this allowlist specifically for an app served
       // through a CDN/proxy in front of it (Cloudflare in front of the
       // Worker, custom domain).
-      allowedOrigins: ["scheduler.oradellfire.org"],
+      allowedOrigins: ["checks.oradellfire.org"],
     },
   },
 };

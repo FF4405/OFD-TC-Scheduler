@@ -11,7 +11,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DEMO_RECIPIENT_EMAIL, type SettingsMap } from "@/lib/settings";
 
 import { updateSettings } from "./actions";
-import { autoGeneratePeriods } from "../periods/actions";
 
 const DAY_OPTIONS = [
   { value: "0", label: "Sunday" },
@@ -26,9 +25,7 @@ const DAY_OPTIONS = [
 export function SettingsForm({ initial }: { initial: SettingsMap }) {
   const [values, setValues] = useState<SettingsMap>(initial);
   const [isSaving, startSaving] = useTransition();
-  const [isGenerating, startGenerating] = useTransition();
   const [saved, setSaved] = useState(false);
-  const [genMessage, setGenMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   function save() {
@@ -40,23 +37,6 @@ export function SettingsForm({ initial }: { initial: SettingsMap }) {
         setSaved(true);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to save settings.");
-      }
-    });
-  }
-
-  function generate() {
-    setGenMessage(null);
-    setError(null);
-    startGenerating(async () => {
-      try {
-        const result = await autoGeneratePeriods();
-        setGenMessage(
-          result.created === 0
-            ? (result.message ?? "All periods already exist")
-            : `Created ${result.created} period${result.created !== 1 ? "s" : ""}`,
-        );
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to auto-generate periods.");
       }
     });
   }
@@ -150,19 +130,6 @@ export function SettingsForm({ initial }: { initial: SettingsMap }) {
             "Save settings"
           )}
         </Button>
-      </div>
-
-      <div className="border-t pt-4">
-        <p className="text-muted-foreground mb-2 text-sm">
-          Periods out to the configured horizon are generated automatically every day — carrying
-          poor-attendance members forward and rotating everyone else — so there&apos;s normally nothing to
-          click here. Use this only to force a regeneration right now instead of waiting for the next
-          automatic run (e.g. right after fixing the roster).
-        </p>
-        <Button variant="outline" onClick={generate} disabled={isGenerating}>
-          {isGenerating ? "Generating…" : "Regenerate periods now"}
-        </Button>
-        {genMessage ? <p className="text-muted-foreground mt-2 text-sm">{genMessage}</p> : null}
       </div>
 
       <div className="text-muted-foreground border-t pt-4 text-xs">

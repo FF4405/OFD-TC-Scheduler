@@ -7,7 +7,7 @@ import { getDb } from "@/db/client";
 import { periodAssignments, periods } from "@/db/schema";
 import { canManageSchedule } from "@/lib/auth/permissions";
 import { getCurrentUser } from "@/lib/auth/session";
-import { recalculatePeriodAssignments, runAutoGeneratePeriods, type AutoGenerateResult } from "@/lib/rotation";
+import { recalculatePeriodAssignments } from "@/lib/rotation";
 
 async function requireAdmin() {
   const user = await getCurrentUser();
@@ -75,17 +75,6 @@ export async function updatePeriodAssignments(
   revalidatePath("/periods");
   revalidatePath("/periods/[id]", "page");
   revalidatePath("/");
-}
-
-export type { AutoGenerateResult };
-
-// Kept for admins who want to force a regeneration immediately (e.g. right
-// after fixing the roster) rather than waiting for the daily cron — see
-// src/app/api/cron/auto-generate-periods/route.ts for the automatic path
-// that normally keeps the horizon topped up without anyone clicking this.
-export async function autoGeneratePeriods(): Promise<AutoGenerateResult> {
-  await requireAdmin();
-  return runAutoGeneratePeriods();
 }
 
 // Re-fills one existing period's assignments from the rotation cycle,

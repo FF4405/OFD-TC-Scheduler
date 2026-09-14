@@ -242,3 +242,46 @@ export async function recalculatePeriodAssignments(periodId: string): Promise<vo
   revalidatePath("/members");
   revalidatePath("/");
 }
+
+// Called when an admin manually assigns a member to a slot instead of
+// letting the rotation cycle pick them — that member just served early,
+// so they (and everyone the cycle would have reached before them) move
+// to the back of the queue, instead of also getting their "regular" turn
+// whenever the cycle naturally reaches them next.
+export async function sendToBackOfRotation(memberIds: string[]): Promise<void> {
+  if (memberIds.length === 0) return;
+  const db = getDb();
+
+  const eligibleMembers = sortByLineNumber(
+    (await db.select().from(users)).filter((m) => m.rosterActive && m.rosterStatus !== "retired"),
+  );
+  if (eligibleMembers.length === 0) return;
+
+  const s = await getSettings(db);
+  const currentCursor = s.rotation_cursor_member_id
+    ? eligibleMembers.findIndex((m) => m.id === s.rotation_cursor_member_id)
+    : -1;
+
+  // The queue is cyclic, so a single cursor can only mark one "last
+  // served" point — moving it to whichever manually-picked member is
+  // furthest ahead (walking forward from the current cursor) also pushes
+  // every other manually-picked member behind that same point.
+  let furthestIndex = -1;
+  let furthestDistance = -1;
+  for (const memberId of memberIds) {
+    const idx = eligibleMembers.findIndex((m) => m.id === memberId);
+    if (idx === -1) continue;
+    const distance = (idx - currentCursor + eligibleMembers.length) % eligibleMembers.length;
+    if (distance > furthestDistance) {
+      furthestDistance = distance;
+      furthestIndex = idx;
+    }
+  }
+  if (furthestIndex === -1) return;
+
+  const cursorMemberId = eligibleMembers[furthestIndex].id;
+  await db
+    .insert(settingsTable)
+    .values({ key: "rotation_cursor_member_id", value: cursorMemberId })
+    .onConflictDoUpdate({ target: settingsTable.key, set: { value: cursorMemberId } });
+}

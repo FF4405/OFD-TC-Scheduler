@@ -7,7 +7,7 @@ import { getDb } from "@/db/client";
 import { periodAssignments, periods } from "@/db/schema";
 import { canManageSchedule } from "@/lib/auth/permissions";
 import { getCurrentUser } from "@/lib/auth/session";
-import { recalculatePeriodAssignments } from "@/lib/rotation";
+import { recalculatePeriodAssignments, sendToBackOfRotation } from "@/lib/rotation";
 
 async function requireAdmin() {
   const user = await getCurrentUser();
@@ -59,6 +59,9 @@ export async function updatePeriodAssignments(
   await requireAdmin();
   const db = getDb();
 
+  const existingRows = await db.select().from(periodAssignments).where(eq(periodAssignments.periodId, periodId));
+  const existingMemberBySlot = new Map(existingRows.map((r) => [r.slotId, r.memberId]));
+
   if (input.isCurrent) await db.update(periods).set({ isCurrent: false });
   await db.update(periods).set({ name: input.name, isCurrent: input.isCurrent }).where(eq(periods.id, periodId));
 
@@ -71,6 +74,14 @@ export async function updatePeriodAssignments(
         set: { memberId: a.memberId },
       });
   }
+
+  // Anyone newly assigned here by hand (as opposed to left as whatever
+  // the rotation had already put in the slot) just got pulled forward
+  // out of turn — send them to the back of the queue.
+  const pulledForward = input.assignments
+    .filter((a) => a.memberId && a.memberId !== existingMemberBySlot.get(a.slotId))
+    .map((a) => a.memberId!);
+  await sendToBackOfRotation(pulledForward);
 
   revalidatePath("/periods");
   revalidatePath("/periods/[id]", "page");

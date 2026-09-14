@@ -4,14 +4,15 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prebuild": "npm run cf:typegen",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
     "cf:typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
-    "cf:build": "npm run cf:typegen && opennextjs-cloudflare build",
+    "cf:build": "opennextjs-cloudflare build",
     "cf:preview": "npm run cf:build && wrangler dev",
-    "cf:deploy": "npm run cf:build && opennextjs-cloudflare deploy"
+    "cf:deploy": "npm run cf:build && wrangler deploy"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.23",
